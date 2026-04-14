@@ -1,0 +1,45 @@
+name: Build macOS DMG
+
+on:
+  # Запуск при пуше в основную ветку
+  push:
+    branches: [ "main", "master" ]
+  # Или ручной запуск по кнопке "Run workflow" в GitHub
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build DMG on macOS
+    # Используем официальный виртуальный Mac от GitHub
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Актуальная стабильная версия Node
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      # Сборка вашего приложения (подхватит вашу команду build:mac)
+      - name: Build Mac App
+        run: npm run build:mac
+        
+        # Если выключен appleId, electron-builder может ругаться на code-signing
+        # Чтобы он точно собрал сборку без Apple Developer аккаунта, мы
+        # явно игнорируем ошибку при подписи (для себя dmg все равно соберется):
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          
+      - name: Upload DMG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-Palladium-Build
+          # Забираем все .dmg файлы, которые появились в папке dist/
+          path: dist/*.dmg
+          if-no-files-found: error
