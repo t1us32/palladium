@@ -3,56 +3,56 @@
 const $ = id => document.getElementById(id);
 
 // ── Elements ──────────────────────────────────────────────────────────────────
-const urlInput      = $('urlInput');
-const fetchBtn      = $('fetchBtn');
-const errorMsg      = $('errorMsg');
-const previewCard   = $('previewCard');
-const progressCard  = $('progressCard');
+const urlInput = $('urlInput');
+const fetchBtn = $('fetchBtn');
+const errorMsg = $('errorMsg');
+const previewCard = $('previewCard');
+const progressCard = $('progressCard');
 const progressLabel = $('progressLabel');
-const doneCard      = $('doneCard');
-const downloadBtn   = $('downloadBtn');
-const downloadLink  = $('downloadLink');
+const doneCard = $('doneCard');
+const downloadBtn = $('downloadBtn');
+const downloadLink = $('downloadLink');
 const openFolderBtn = $('openFolderBtn');
-const resetBtn      = $('resetBtn');
-const formatToggle  = $('formatToggle');
-const settingsBtn   = $('settingsBtn');
-const settingsMenu  = $('settingsMenu');
-const qualityBtn    = $('qualityBtn');
-const qualityMenu   = $('qualityMenu');
-const qualityLabel  = $('qualityLabel');
-const qualityOptions= $('qualityOptions');
-const themeBtn       = $('themeBtn');
-const historyBtn     = $('historyBtn');
-const historyMenu    = $('historyMenu');
-const historyList    = $('historyList');
-const historyEmpty   = $('historyEmpty');
-const filenameInput  = $('filenameInput');
-const recentSection  = $('recentSection');
-const recentList     = $('recentList');
+const resetBtn = $('resetBtn');
+const formatToggle = $('formatToggle');
+const settingsBtn = $('settingsBtn');
+const settingsMenu = $('settingsMenu');
+const qualityBtn = $('qualityBtn');
+const qualityMenu = $('qualityMenu');
+const qualityLabel = $('qualityLabel');
+const qualityOptions = $('qualityOptions');
+const themeBtn = $('themeBtn');
+const historyBtn = $('historyBtn');
+const historyMenu = $('historyMenu');
+const historyList = $('historyList');
+const historyEmpty = $('historyEmpty');
+const filenameInput = $('filenameInput');
+const recentSection = $('recentSection');
+const recentList = $('recentList');
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const IS_ELECTRON = typeof window.electronAPI !== 'undefined';
-let selectedFormat   = 'video';
-let selectedQuality  = 'best';
-let lastSavedFolder  = null;
-let videoTitle       = '';
-let currentPlatform  = null;
+let selectedFormat = 'video';
+let selectedQuality = 'best';
+let lastSavedFolder = null;
+let videoTitle = '';
+let currentPlatform = null;
 
 // Quality presets per format
 const QUALITY_PRESETS = {
   video: [
     { label: 'Best available', value: 'best' },
-    { label: '4K (2160p)',     value: '2160' },
-    { label: '1080p',          value: '1080' },
-    { label: '720p',           value: '720'  },
-    { label: '480p',           value: '480'  },
-    { label: '360p',           value: '360'  },
+    { label: '4K (2160p)', value: '2160' },
+    { label: '1080p', value: '1080' },
+    { label: '720p', value: '720' },
+    { label: '480p', value: '480' },
+    { label: '360p', value: '360' },
   ],
   audio: [
     { label: 'Best available', value: 'best' },
-    { label: '320 kbps',       value: '320K' },
-    { label: '192 kbps',       value: '192K' },
-    { label: '128 kbps',       value: '128K' },
+    { label: '320 kbps', value: '320K' },
+    { label: '192 kbps', value: '192K' },
+    { label: '128 kbps', value: '128K' },
   ],
 };
 
@@ -61,12 +61,12 @@ const show = (...els) => els.forEach(e => e.classList.remove('hidden'));
 const hide = (...els) => els.forEach(e => e.classList.add('hidden'));
 
 function showError(msg) { errorMsg.textContent = msg; show(errorMsg); }
-function clearError()   { errorMsg.textContent = ''; hide(errorMsg); }
+function clearError() { errorMsg.textContent = ''; hide(errorMsg); }
 
 function fmtCount(n) {
   if (!n) return null;
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-  if (n >= 1_000)     return (n / 1_000).toFixed(1)     + 'K';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
   return String(n);
 }
 
@@ -76,8 +76,8 @@ function fmtDuration(sec) {
   const m = Math.floor((sec % 3600) / 60);
   const s = Math.floor(sec % 60);
   return h
-    ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
-    : `${m}:${String(s).padStart(2,'0')}`;
+    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function closeAllModals() {
@@ -121,7 +121,7 @@ async function loadSettings() {
     appSettings = await window.electronAPI.getSettings();
   } else {
     try { appSettings = { ...appSettings, ...JSON.parse(localStorage.getItem('palladium-settings') || '{}') }; }
-    catch {}
+    catch { }
   }
   // Sync radio buttons to loaded state
   document.querySelectorAll('input[name="saveLocation"]').forEach(r => {
@@ -262,8 +262,8 @@ renderQualityOptions();
 // ── History ───────────────────────────────────────────────────────────────────
 function timeAgo(ts) {
   const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60)    return 'just now';
-  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }
@@ -357,12 +357,12 @@ async function refreshRecent() {
 
 // ── Clipboard auto-detect ─────────────────────────────────────────────────────
 const PLATFORM_RE = [
-  /youtube\.com\/watch/i,  /youtu\.be\//i,
+  /youtube\.com\/watch/i, /youtu\.be\//i,
   /spotify\.com\/(track|album|playlist)/i,
-  /soundcloud\.com\//i,    /tiktok\.com\//i,
+  /soundcloud\.com\//i, /tiktok\.com\//i,
   /instagram\.com\/(p|reel|tv)\//i,
   /(twitter|x)\.com\/.+\/status\//i,
-  /vimeo\.com\/\d/i,       /twitch\.tv\//i,
+  /vimeo\.com\/\d/i, /twitch\.tv\//i,
   /reddit\.com\/r\/.+\/comments\//i,
 ];
 
@@ -382,7 +382,7 @@ async function checkClipboard() {
     if (text && looksLikeMedia(text)) {
       urlInput.value = text.trim();
     }
-  } catch {}
+  } catch { }
 }
 
 window.addEventListener('focus', checkClipboard);
@@ -424,7 +424,7 @@ async function fetchInfo() {
   hide(previewCard, progressCard, doneCard, recentSection);
 
   try {
-    const res  = await fetch('/api/info', {
+    const res = await fetch('/api/info', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
@@ -433,7 +433,7 @@ async function fetchInfo() {
 
     if (!res.ok) { showError(data.error || 'Could not fetch info.'); return; }
 
-    videoTitle      = data.title || 'download';
+    videoTitle = data.title || 'download';
     currentPlatform = data.platform ? data.platform.label : null;
 
     // Filename input — pre-fill with sanitized title
@@ -456,7 +456,7 @@ async function fetchInfo() {
     // Duration
     const durText = fmtDuration(data.duration);
     if (durText) { $('duration').textContent = durText; show($('duration')); }
-    else          { hide($('duration')); }
+    else { hide($('duration')); }
 
     // Title & uploader
     $('videoTitle').textContent = data.title || 'Untitled';
@@ -486,7 +486,7 @@ async function startDownload() {
   show(progressCard);
 
   try {
-    const res  = await fetch('/api/download', {
+    const res = await fetch('/api/download', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, format: selectedFormat, quality: selectedQuality }),
@@ -514,12 +514,12 @@ async function startDownload() {
 async function handleSave(data) {
   // In Electron: use native save flow
   if (IS_ELECTRON) {
-    const ext  = data.filename.split('.').pop();
+    const ext = data.filename.split('.').pop();
     const customName = filenameInput.value.trim();
     const name = `${customName || videoTitle.replace(/[^\w\s.-]/g, '').trim() || 'download'}.${ext}`;
 
     const result = await window.electronAPI.saveFile({
-      serverPath:    data.server_path,
+      serverPath: data.server_path,
       suggestedName: name,
     });
 
@@ -540,27 +540,27 @@ async function handleSave(data) {
       : 'Saved to Downloads.';
 
     await addHistoryEntry({
-      title:      videoTitle,
-      platform:   currentPlatform,
-      format:     selectedFormat,
-      savedAt:    Date.now(),
+      title: videoTitle,
+      platform: currentPlatform,
+      format: selectedFormat,
+      savedAt: Date.now(),
       folderPath: result.folderPath,
     });
     refreshRecent();
 
   } else {
     // Web: plain anchor download
-    downloadLink.href     = data.download_url;
+    downloadLink.href = data.download_url;
     downloadLink.download = data.filename;
     show(downloadLink);
     hide(openFolderBtn);
     $('doneSub').textContent = 'Click to save.';
 
     await addHistoryEntry({
-      title:      videoTitle,
-      platform:   currentPlatform,
-      format:     selectedFormat,
-      savedAt:    Date.now(),
+      title: videoTitle,
+      platform: currentPlatform,
+      format: selectedFormat,
+      savedAt: Date.now(),
       folderPath: null,
     });
   }
@@ -572,44 +572,81 @@ openFolderBtn.addEventListener('click', () => {
 });
 
 // ── Edit tab ──────────────────────────────────────────────────────────────────
-let editFile       = null;
-let editDuration   = 0;
-let editObjectURL  = null;
+let editFile = null;
+let editDuration = 0;
+let editObjectURL = null;
 
-const editDropZone    = $('editDropZone');
-const editPickBtn     = $('editPickBtn');
-const editFileInput   = $('editFileInput');
-const editPanel       = $('editPanel');
-const editMediaEl     = $('editMediaEl');
-const editDoneCard    = $('editDoneCard');
-const trimStartRange  = $('trimStartRange');
-const trimEndRange    = $('trimEndRange');
-const trimFill        = $('trimFill');
-const trimStartInput  = $('trimStartInput');
-const trimEndInput    = $('trimEndInput');
-const editTrimBtn     = $('editTrimBtn');
-const editErrorMsg    = $('editErrorMsg');
+const editDropZone = $('editDropZone');
+const editPickBtn = $('editPickBtn');
+const editFileInput = $('editFileInput');
+const editPanel = $('editPanel');
+const editMediaEl = $('editMediaEl');
+const editPreviewWrap = $('editPreviewWrap');
+const editPreviewPlayer = $('editPreviewPlayer');
+const editPreviewOverlay = $('editPreviewOverlay');
+const editPlayIcon = $('editPlayIcon');
+const editPauseIcon = $('editPauseIcon');
+const editDoneCard = $('editDoneCard');
+const etWrap = $('etWrap');
+const etRegion = $('etRegion');
+const etHandleS = $('etHandleS');
+const etHandleE = $('etHandleE');
+const etPlayhead = $('etPlayhead');
+const trimStartInput = $('trimStartInput');
+const trimEndInput = $('trimEndInput');
+
+let trimStart = 0;
+let trimEnd = 1;
+const editTrimBtn = $('editTrimBtn');
+const editErrorMsg = $('editErrorMsg');
+
+// ── Preview player controls ────────────────────────────────────────────────────
+function setPreviewPlaying(playing) {
+  editPreviewOverlay.classList.toggle('playing', playing);
+  editPreviewPlayer.classList.toggle('playing', playing);
+  editPlayIcon.classList.toggle('hidden', playing);
+  editPauseIcon.classList.toggle('hidden', !playing);
+}
+
+function updatePreviewHead() {
+  if (!editDuration) return;
+  const pct = (editMediaEl.currentTime / editDuration) * 100;
+  etPlayhead.style.left = pct + '%';
+}
+
+function updateTrimUI() {
+  if (!editDuration) return;
+  const sPct = (trimStart / editDuration) * 100;
+  const ePct = (trimEnd / editDuration) * 100;
+
+  etHandleS.style.left = sPct + '%';
+  etHandleE.style.left = ePct + '%';
+  etRegion.style.left = sPct + '%';
+  etRegion.style.width = (ePct - sPct) + '%';
+}
+
+editPreviewPlayer.addEventListener('click', () => {
+  if (editMediaEl.paused) editMediaEl.play();
+  else editMediaEl.pause();
+});
+
+editMediaEl.addEventListener('play', () => setPreviewPlaying(true));
+editMediaEl.addEventListener('pause', () => setPreviewPlaying(false));
+editMediaEl.addEventListener('ended', () => setPreviewPlaying(false));
+editMediaEl.addEventListener('timeupdate', updatePreviewHead);
 
 function parseSecs(str) {
   const parts = String(str).trim().split(':').map(Number);
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60  + parts[1];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
   return parts[0] || 0;
 }
 
 function fmtSecs(s) {
   s = Math.max(0, Math.round(s));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
-  return `${m}:${String(sec).padStart(2,'0')}`;
-}
-
-function updateTrimFill() {
-  const start = parseFloat(trimStartRange.value);
-  const end   = parseFloat(trimEndRange.value);
-  const max   = parseFloat(trimStartRange.max) || 1;
-  trimFill.style.left  = `${(start / max) * 100}%`;
-  trimFill.style.width = `${((end - start) / max) * 100}%`;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 function loadEditFile(file) {
@@ -619,20 +656,24 @@ function loadEditFile(file) {
   editMediaEl.src = editObjectURL;
   editMediaEl.addEventListener('loadedmetadata', () => {
     editDuration = Math.floor(editMediaEl.duration);
-    $('editFileName').textContent     = file.name;
+    $('editFileName').textContent = file.name;
     $('editFileDuration').textContent = fmtSecs(editDuration);
 
     // icon: video vs audio
     const isAudio = file.type.startsWith('audio');
     $('editFileIcon').innerHTML = isAudio ? AUDIO_ICON : VIDEO_ICON;
 
-    trimStartRange.max   = editDuration;
-    trimEndRange.max     = editDuration;
-    trimStartRange.value = 0;
-    trimEndRange.value   = editDuration;
+    trimStart = 0;
+    trimEnd = editDuration;
     trimStartInput.value = '0:00';
-    trimEndInput.value   = fmtSecs(editDuration);
-    updateTrimFill();
+    trimEndInput.value = fmtSecs(editDuration);
+
+    editPreviewPlayer.classList.toggle('audio-mode', isAudio);
+    setPreviewPlaying(false);
+    show(editPreviewWrap);
+
+    updateTrimUI();
+    updatePreviewHead();
 
     hide(editDropZone, editDoneCard, editErrorMsg);
     show(editPanel);
@@ -656,40 +697,92 @@ editFileInput.addEventListener('change', () => {
   if (editFileInput.files[0]) loadEditFile(editFileInput.files[0]);
 });
 
-// Sliders → text inputs + fill
-trimStartRange.addEventListener('input', () => {
-  if (parseFloat(trimStartRange.value) >= parseFloat(trimEndRange.value))
-    trimStartRange.value = parseFloat(trimEndRange.value) - 1;
-  trimStartInput.value = fmtSecs(trimStartRange.value);
-  updateTrimFill();
-});
-trimEndRange.addEventListener('input', () => {
-  if (parseFloat(trimEndRange.value) <= parseFloat(trimStartRange.value))
-    trimEndRange.value = parseFloat(trimStartRange.value) + 1;
-  trimEndInput.value = fmtSecs(trimEndRange.value);
-  updateTrimFill();
+// Unified timeline interaction mapping
+let activeDrag = null;
+
+etWrap.addEventListener('pointerdown', e => {
+  if (!editDuration) return;
+  e.preventDefault();
+  etWrap.setPointerCapture(e.pointerId);
+
+  const rect = etWrap.getBoundingClientRect();
+  const clickPct = (e.clientX - rect.left) / rect.width;
+  const clickTime = clickPct * editDuration;
+
+  if (e.target === etHandleS) {
+    activeDrag = 'start';
+    etHandleS.classList.add('active');
+  } else if (e.target === etHandleE) {
+    activeDrag = 'end';
+    etHandleE.classList.add('active');
+  } else {
+    // Seek
+    activeDrag = 'seek';
+    editMediaEl.currentTime = Math.max(0, Math.min(editDuration, clickTime));
+  }
 });
 
-// Text inputs → sliders + fill
-trimStartInput.addEventListener('change', () => {
-  const v = Math.min(parseSecs(trimStartInput.value), editDuration - 1);
-  trimStartInput.value = fmtSecs(v);
-  trimStartRange.value = v;
-  if (v >= parseFloat(trimEndRange.value)) { trimEndRange.value = v + 1; trimEndInput.value = fmtSecs(v + 1); }
-  updateTrimFill();
+etWrap.addEventListener('pointermove', e => {
+  if (!activeDrag || !editDuration) return;
+
+  const rect = etWrap.getBoundingClientRect();
+  let pct = (e.clientX - rect.left) / rect.width;
+  pct = Math.max(0, Math.min(1, pct));
+  const time = pct * editDuration;
+
+  if (activeDrag === 'start') {
+    trimStart = Math.min(time, trimEnd - 1);
+    trimStart = Math.max(0, trimStart);
+    trimStartInput.value = fmtSecs(trimStart);
+    editMediaEl.currentTime = trimStart;
+    updateTrimUI();
+  } else if (activeDrag === 'end') {
+    trimEnd = Math.max(time, trimStart + 1);
+    trimEnd = Math.min(editDuration, trimEnd);
+    trimEndInput.value = fmtSecs(trimEnd);
+    editMediaEl.currentTime = trimEnd;
+    updateTrimUI();
+  } else if (activeDrag === 'seek') {
+    editMediaEl.currentTime = time;
+  }
 });
+
+etWrap.addEventListener('pointerup', endDrag);
+etWrap.addEventListener('pointercancel', endDrag);
+
+function endDrag() {
+  activeDrag = null;
+  etHandleS.classList.remove('active');
+  etHandleE.classList.remove('active');
+}
+
+// Text inputs → UI + preview seek
+trimStartInput.addEventListener('change', () => {
+  let v = parseSecs(trimStartInput.value);
+  v = Math.max(0, Math.min(v, editDuration - 1));
+  if (v >= trimEnd) { trimEnd = v + 1; trimEndInput.value = fmtSecs(trimEnd); }
+  trimStart = v;
+  trimStartInput.value = fmtSecs(v);
+  updateTrimUI();
+  editMediaEl.currentTime = v;
+});
+
 trimEndInput.addEventListener('change', () => {
-  const v = Math.min(Math.max(parseSecs(trimEndInput.value), 1), editDuration);
+  let v = parseSecs(trimEndInput.value);
+  v = Math.min(Math.max(v, 1), editDuration);
+  if (v <= trimStart) { trimStart = v - 1; trimStartInput.value = fmtSecs(trimStart); }
+  trimEnd = v;
   trimEndInput.value = fmtSecs(v);
-  trimEndRange.value = v;
-  if (v <= parseFloat(trimStartRange.value)) { trimStartRange.value = v - 1; trimStartInput.value = fmtSecs(v - 1); }
-  updateTrimFill();
+  updateTrimUI();
+  editMediaEl.currentTime = v;
 });
 
 // Clear file
 $('editClearBtn').addEventListener('click', () => {
+  editMediaEl.pause();
+  setPreviewPlaying(false);
   editFile = null;
-  hide(editPanel, editDoneCard);
+  hide(editPanel, editDoneCard, editPreviewWrap);
   show(editDropZone);
   editFileInput.value = '';
 });
@@ -702,22 +795,22 @@ editTrimBtn.addEventListener('click', async () => {
   editTrimBtn.textContent = 'Trimming…';
 
   const start = parseSecs(trimStartInput.value);
-  const end   = parseSecs(trimEndInput.value);
+  const end = parseSecs(trimEndInput.value);
 
   const fd = new FormData();
   fd.append('file', editFile);
   fd.append('start', String(start));
-  fd.append('end',   String(end));
+  fd.append('end', String(end));
 
   try {
-    const res  = await fetch('/api/trim', { method: 'POST', body: fd });
+    const res = await fetch('/api/trim', { method: 'POST', body: fd });
     const data = await res.json();
 
     if (!res.ok) { editErrorMsg.textContent = data.error || 'Trim failed.'; show(editErrorMsg); return; }
 
     if (IS_ELECTRON) {
-      const ext    = editFile.name.split('.').pop();
-      const name   = editFile.name.replace(/\.[^.]+$/, '') + `_trim_${fmtSecs(start).replace(/:/g,'-')}-${fmtSecs(end).replace(/:/g,'-')}.${ext}`;
+      const ext = editFile.name.split('.').pop();
+      const name = editFile.name.replace(/\.[^.]+$/, '') + `_trim_${fmtSecs(start).replace(/:/g, '-')}-${fmtSecs(end).replace(/:/g, '-')}.${ext}`;
       const result = await window.electronAPI.saveFile({ serverPath: data.server_path, suggestedName: name });
       if (result.canceled) return;
       $('editOpenFolderBtn').classList.remove('hidden');
@@ -725,7 +818,7 @@ editTrimBtn.addEventListener('click', async () => {
       $('editDownloadLink').classList.add('hidden');
       $('editDoneSub').textContent = 'Saved to ' + result.filePath;
     } else {
-      $('editDownloadLink').href     = data.download_url;
+      $('editDownloadLink').href = data.download_url;
       $('editDownloadLink').download = data.filename;
       $('editDownloadLink').classList.remove('hidden');
       $('editOpenFolderBtn').classList.add('hidden');
@@ -744,10 +837,12 @@ editTrimBtn.addEventListener('click', async () => {
 });
 
 $('editResetBtn').addEventListener('click', () => {
+  editMediaEl.pause();
+  setPreviewPlaying(false);
   editFile = null;
   if (editObjectURL) { URL.revokeObjectURL(editObjectURL); editObjectURL = null; }
   editFileInput.value = '';
-  hide(editDoneCard, editPanel, editErrorMsg);
+  hide(editDoneCard, editPanel, editPreviewWrap, editErrorMsg);
   show(editDropZone);
 });
 

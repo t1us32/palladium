@@ -236,29 +236,52 @@
 
         <div class="divider"></div>
 
-        <!-- Dual range slider -->
-        <div class="trim-slider-wrap">
-          <input id="trimStartRange" class="trim-range trim-range-start" type="range" min="0" step="1" value="0" />
-          <input id="trimEndRange"   class="trim-range trim-range-end"   type="range" min="0" step="1" value="100" />
-          <div class="trim-track-bg">
-            <div id="trimFill" class="trim-fill"></div>
+        <!-- Video preview -->
+        <div id="editPreviewWrap" class="edit-preview-wrap hidden">
+          <div class="edit-preview-player" id="editPreviewPlayer">
+            <video id="editMediaEl" class="edit-preview" preload="metadata"></video>
+
+            <!-- Audio-mode placeholder (hidden for video) -->
+            <div class="edit-audio-bg" id="editAudioBg">
+              <div class="edit-audio-bars">
+                <span></span><span></span><span></span><span></span><span></span>
+              </div>
+            </div>
+
+            <!-- Play / pause overlay -->
+            <div class="edit-preview-overlay" id="editPreviewOverlay">
+              <div class="edit-preview-play-btn">
+                <svg id="editPlayIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                <svg id="editPauseIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" class="hidden">
+                  <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+                </svg>
+              </div>
+            </div>
+
           </div>
         </div>
 
-        <!-- Time inputs -->
-        <div class="trim-time-row">
-          <div class="trim-time-field">
-            <span class="trim-time-label">Start</span>
-            <input id="trimStartInput" class="trim-time-input" type="text" value="0:00" />
+        <!-- Unified timeline -->
+        <div class="edit-timeline">
+          <div class="et-wrap" id="etWrap">
+            <div class="et-region" id="etRegion"></div>
+            <div class="et-handle et-handle-s" id="etHandleS"></div>
+            <div class="et-handle et-handle-e" id="etHandleE"></div>
+            <div class="et-playhead" id="etPlayhead"></div>
           </div>
-          <div class="trim-time-field trim-time-field-end">
-            <span class="trim-time-label">End</span>
-            <input id="trimEndInput" class="trim-time-input" type="text" />
+          <div class="et-times">
+            <div class="et-time-field">
+              <span class="trim-time-label">In</span>
+              <input id="trimStartInput" class="trim-time-input" type="text" value="0:00" />
+            </div>
+            <div class="et-time-field">
+              <span class="trim-time-label">Out</span>
+              <input id="trimEndInput" class="trim-time-input" type="text" />
+            </div>
           </div>
         </div>
-
-        <!-- Hidden media element for duration detection -->
-        <video id="editMediaEl" class="hidden" preload="metadata"></video>
 
         <!-- Status -->
         <p id="editErrorMsg" class="error-msg hidden"></p>
