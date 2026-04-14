@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Palladium</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- ── Top bar: logo + settings gear ── -->
+    <header class="header">
+      <div class="header-inner">
+        <div class="wordmark">Palladium</div>
+
+        <!-- Header action buttons -->
+        <div class="header-actions">
+          <button id="historyBtn" class="icon-btn" title="Download history" aria-label="Download history">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </button>
+          <button id="themeBtn" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">
+            <svg id="themeMoon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            <svg id="themeSun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+              <circle cx="12" cy="12" r="5"/>
+              <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+              <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            </svg>
+          </button>
+          <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <p class="tagline">Download anything, instantly.</p>
+    </header>
+
+    <!-- ── URL input ── -->
+    <section class="input-section">
+      <div class="input-wrap">
+        <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+        </svg>
+        <input
+          id="urlInput"
+          type="url"
+          class="url-input"
+          placeholder="Paste a link…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="fetchBtn" class="btn-primary">Fetch</button>
+      </div>
+      <p id="errorMsg" class="error-msg hidden"></p>
+    </section>
+
+    <!-- ── Tab bar ── -->
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-tab="download">Download</button>
+      <button class="tab-btn" data-tab="edit">Edit</button>
+    </nav>
+
+    <div id="downloadTab" class="tab-pane">
+
+    <!-- ── Recent downloads (idle state filler) ── -->
+    <section id="recentSection" class="recent-section hidden">
+      <p class="recent-heading">Recent</p>
+      <div id="recentList" class="recent-list"></div>
+    </section>
+
+    <!-- ── Video preview ── -->
+    <section id="previewCard" class="card preview-card hidden">
+      <div class="preview-layout">
+
+        <div class="thumb-col">
+          <div class="thumb-wrap">
+            <img id="thumbnail" src="" alt="" />
+            <span id="duration" class="duration-pill hidden"></span>
+          </div>
+        </div>
+
+        <div class="meta-col">
+          <p id="videoTitle"   class="video-title"></p>
+          <input id="filenameInput" class="filename-input hidden" type="text"
+            placeholder="Filename…" spellcheck="false" autocomplete="off" />
+          <p id="uploaderName" class="uploader hidden"></p>
+
+          <div class="divider"></div>
+
+          <!-- Format + Quality row -->
+          <div class="controls-row">
+
+            <!-- Format segmented control -->
+            <div id="formatToggle" class="segment">
+              <button class="seg-btn active" data-fmt="video">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                </svg>
+                Video
+              </button>
+              <button class="seg-btn" data-fmt="audio">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+                </svg>
+                Audio
+              </button>
+            </div>
+
+            <!-- Quality picker -->
+            <div class="quality-anchor">
+              <button id="qualityBtn" class="quality-btn">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+                <span id="qualityLabel">Best</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+            </div>
+
+          </div>
+
+          <button id="downloadBtn" class="btn-primary btn-full">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── Progress ── -->
+    <section id="progressCard" class="card progress-card hidden">
+      <p id="progressLabel" class="progress-label">Downloading…</p>
+      <div class="track"><div class="fill indeterminate"></div></div>
+    </section>
+
+    <!-- ── Done ── -->
+    <section id="doneCard" class="card done-card hidden">
+      <div class="done-check">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      <div class="done-body">
+        <div class="done-text">
+          <p id="doneSub" class="done-sub">Saved to Downloads.</p>
+        </div>
+        <div class="done-actions">
+          <!-- Web fallback: plain <a> download. Hidden in Electron. -->
+          <a id="downloadLink" class="btn-primary" href="#" download>Save file</a>
+          <!-- Electron only: open folder -->
+          <button id="openFolderBtn" class="btn-ghost hidden">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+            Open folder
+          </button>
+          <button id="resetBtn" class="btn-ghost">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/>
+            </svg>
+            Download another
+          </button>
+        </div>
+      </div>
+    </section>
+
+    </div><!-- /downloadTab -->
+
+    <!-- ── Edit tab ── -->
+    <div id="editTab" class="tab-pane hidden">
+
+      <!-- Drop zone -->
+      <div id="editDropZone" class="edit-drop-zone">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="edit-drop-icon">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <p class="edit-drop-label">Drop a file here</p>
+        <p class="edit-drop-sub">or <button id="editPickBtn" class="btn-link">pick a file</button></p>
+        <input id="editFileInput" type="file" accept="video/*,audio/*" class="hidden" />
+      </div>
+
+      <!-- Trim panel (shown after file loaded) -->
+      <div id="editPanel" class="card edit-panel hidden">
+
+        <!-- File info row -->
+        <div class="edit-file-info">
+          <div id="editFileIcon" class="edit-file-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+            </svg>
+          </div>
+          <div class="edit-file-meta">
+            <span id="editFileName" class="edit-file-name"></span>
+            <span id="editFileDuration" class="edit-file-duration"></span>
+          </div>
+          <button id="editClearBtn" class="modal-close" title="Remove file">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Dual range slider -->
+        <div class="trim-slider-wrap">
+          <input id="trimStartRange" class="trim-range trim-range-start" type="range" min="0" step="1" value="0" />
+          <input id="trimEndRange"   class="trim-range trim-range-end"   type="range" min="0" step="1" value="100" />
+          <div class="trim-track-bg">
+            <div id="trimFill" class="trim-fill"></div>
+          </div>
+        </div>
+
+        <!-- Time inputs -->
+        <div class="trim-time-row">
+          <div class="trim-time-field">
+            <span class="trim-time-label">Start</span>
+            <input id="trimStartInput" class="trim-time-input" type="text" value="0:00" />
+          </div>
+          <div class="trim-time-field trim-time-field-end">
+            <span class="trim-time-label">End</span>
+            <input id="trimEndInput" class="trim-time-input" type="text" />
+          </div>
+        </div>
+
+        <!-- Hidden media element for duration detection -->
+        <video id="editMediaEl" class="hidden" preload="metadata"></video>
+
+        <!-- Status -->
+        <p id="editErrorMsg" class="error-msg hidden"></p>
+
+        <button id="editTrimBtn" class="btn-primary btn-full">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="6" cy="20" r="2"/><circle cx="18" cy="20" r="2"/>
+            <circle cx="6" cy="4" r="2"/><line x1="6" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="12" x2="18" y2="12"/>
+            <line x1="14" y1="8" x2="18" y2="20"/>
+          </svg>
+          Trim
+        </button>
+
+      </div>
+
+      <!-- Edit done card -->
+      <div id="editDoneCard" class="card done-card hidden">
+        <div class="done-check">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </div>
+        <div class="done-body">
+          <div class="done-text">
+            <p id="editDoneSub" class="done-sub">Trimmed successfully.</p>
+          </div>
+          <div class="done-actions">
+            <a id="editDownloadLink" class="btn-primary" href="#" download>Save file</a>
+            <button id="editOpenFolderBtn" class="btn-ghost hidden">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+              Open folder
+            </button>
+            <button id="editResetBtn" class="btn-ghost">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/>
+              </svg>
+              Trim another
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /editTab -->
+
+  </div>
+
+  <!-- ── History modal ── -->
+  <div id="historyMenu" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Download history">
+    <div class="modal-panel modal-panel-wide">
+      <div class="modal-header">
+        <span class="modal-title">Recent downloads</span>
+        <div class="modal-header-end">
+          <button id="clearHistoryBtn" class="btn-text">Clear all</button>
+          <button id="historyCloseBtn" class="modal-close" aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div id="historyList" class="history-list"></div>
+        <p id="historyEmpty" class="history-empty hidden">No downloads yet.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Settings modal ── -->
+  <div id="settingsMenu" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <span class="modal-title">Settings</span>
+        <button id="settingsCloseBtn" class="modal-close" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="dropdown-section">
+          <p class="dropdown-heading">Save location</p>
+          <label class="radio-row">
+            <input type="radio" name="saveLocation" value="downloads" checked />
+            <span class="radio-content">
+              <span class="radio-label">Downloads folder</span>
+              <span class="radio-sub">Saves automatically to your OS Downloads folder</span>
+            </span>
+          </label>
+          <label class="radio-row">
+            <input type="radio" name="saveLocation" value="ask" />
+            <span class="radio-content">
+              <span class="radio-label">Ask each time</span>
+              <span class="radio-sub">Opens a save dialog after every download</span>
+            </span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Quality modal ── -->
+  <div id="qualityMenu" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <span class="modal-title" id="qualityMenuHeading">Video quality</span>
+        <button id="qualityCloseBtn" class="modal-close" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div id="qualityOptions" class="quality-options"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
