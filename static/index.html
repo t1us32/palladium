@@ -140,24 +140,65 @@
 
           </div>
 
-          <button id="downloadBtn" class="btn-primary btn-full">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            Download
-          </button>
+          <!-- Playlist banner (shown when a playlist URL is detected) -->
+          <div id="playlistBanner" class="playlist-banner hidden">
+            <label class="pl-toggle-row">
+              <input type="checkbox" id="playlistToggle" class="pl-checkbox" />
+              <span class="pl-label">Download entire playlist
+                <span class="pl-count" id="playlistCount"></span>
+              </span>
+            </label>
+          </div>
+
+          <!-- Download + Add-to-queue row -->
+          <div class="dl-row">
+            <button id="downloadBtn" class="btn-primary btn-grow">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Download
+            </button>
+            <button id="addToQueueBtn" class="btn-ghost btn-icon" title="Add to queue">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6"/>
+                <line x1="8" y1="12" x2="21" y2="12"/>
+                <line x1="8" y1="18" x2="21" y2="18"/>
+                <line x1="3" y1="6" x2="3.01" y2="6"/>
+                <line x1="3" y1="12" x2="3.01" y2="12"/>
+                <line x1="3" y1="18" x2="3.01" y2="18"/>
+              </svg>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="qi-plus">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
       </div>
     </section>
 
+    <!-- ── Queue ── -->
+    <section id="queueSection" class="card queue-section hidden">
+      <div class="queue-hd">
+        <p class="queue-heading">Queue</p>
+        <button id="clearDoneBtn" class="btn-text">Clear done</button>
+      </div>
+      <div id="queueList" class="queue-list"></div>
+    </section>
+
     <!-- ── Progress ── -->
     <section id="progressCard" class="card progress-card hidden">
-      <p id="progressLabel" class="progress-label">Downloading…</p>
-      <div class="track"><div class="fill indeterminate"></div></div>
+      <div class="progress-top">
+        <p id="progressLabel" class="progress-label">Downloading…</p>
+        <span id="progressPct" class="progress-pct"></span>
+      </div>
+      <div class="track"><div id="progressFill" class="fill indeterminate"></div></div>
+      <p id="progressMeta" class="progress-meta hidden"></p>
     </section>
 
     <!-- ── Done ── -->

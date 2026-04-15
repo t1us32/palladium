@@ -43,10 +43,17 @@ function getYtDlpPath() {
 // ffmpeg: bundled via ffmpeg-static; electron-builder unpacks it from asar
 function getFfmpegPath() {
   if (!ffmpegStatic) return 'ffmpeg';
-  return ffmpegStatic.replace(
-    'app.asar' + path.sep,
-    'app.asar.unpacked' + path.sep
-  );
+  // Handle both Windows (\) and POSIX (/) separators that may appear inside
+  // asar paths regardless of platform, and handle the extraResources/bin copy.
+  const app = getElectronApp();
+  if (app) {
+    const ext = os.platform() === 'win32' ? '.exe' : '';
+    const bundled = path.join(process.resourcesPath, 'bin', 'ffmpeg' + ext);
+    if (fs.existsSync(bundled)) return bundled;
+  }
+  return ffmpegStatic
+    .replace('app.asar/', 'app.asar.unpacked/')
+    .replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
 }
 
 const DOWNLOADS  = getDownloadsDir();
@@ -56,13 +63,34 @@ const FFMPEG_BIN = getFfmpegPath();
 fs.mkdirSync(DOWNLOADS, { recursive: true });
 fs.mkdirSync(path.dirname(BIN_PATH), { recursive: true });
 
+// ── Job store ─────────────────────────────────────────────────────────────────
+// jobId → { status: 'running'|'done'|'error', progress: object|null, result, error }
+const jobs = new Map();
+
 // ── yt-dlp ────────────────────────────────────────────────────────────────────
 let ytDlp;
+
+// Map runtime platform+arch to the correct yt-dlp GitHub release filename.
+// 'yt-dlp' (no suffix) is a Python zipapp and does NOT work without Python.
+function ytDlpReleaseName() {
+  const p = os.platform();
+  if (p === 'win32') return 'yt-dlp.exe';
+  if (p === 'darwin') return 'yt-dlp_macos';
+  const a = os.arch();
+  if (a === 'arm64') return 'yt-dlp_linux_aarch64';
+  if (a === 'arm')   return 'yt-dlp_linux_armv7l';
+  return 'yt-dlp_linux';
+}
 
 async function initYtDlp() {
   if (!fs.existsSync(BIN_PATH)) {
     console.log('[yt-dlp] Downloading binary for', os.platform(), os.arch(), '…');
-    await YTDlpWrap.downloadFromGithub(BIN_PATH);
+    const releases  = await YTDlpWrap.getGithubReleases(1, 1);
+    const version   = releases[0].tag_name;
+    const fileName  = ytDlpReleaseName();
+    const fileURL   = `https://github.com/yt-dlp/yt-dlp/releases/download/${version}/${fileName}`;
+    await YTDlpWrap.downloadFile(fileURL, BIN_PATH);
+    if (os.platform() !== 'win32') fs.chmodSync(BIN_PATH, 0o755);
     console.log('[yt-dlp] Ready:', BIN_PATH);
   }
   ytDlp = new YTDlpWrap(BIN_PATH);
@@ -155,7 +183,7 @@ function ytdlpVideoArgs(url, outTpl, quality = 'best') {
   const fmt = quality === 'best'
     ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
     : `bestvideo[height<=${quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${quality}][ext=mp4]/best[height<=${quality}]`;
-  return [url, '-f', fmt, '--merge-output-format', 'mp4', '--no-playlist', '-o', outTpl];
+  return [url, '-f', fmt, '--merge-output-format', 'mp4', '--ffmpeg-location', FFMPEG_BIN, '--no-playlist', '-o', outTpl];
 }
 
 function ytdlpAudioArgs(url, outTpl, quality = 'best') {
@@ -165,8 +193,66 @@ function ytdlpAudioArgs(url, outTpl, quality = 'best') {
     '-f', 'bestaudio/best',
     '--extract-audio', '--audio-format', 'mp3',
     '--audio-quality', bitrate,
+    '--ffmpeg-location', FFMPEG_BIN,
     '--no-playlist', '-o', outTpl,
   ];
+}
+
+// ── Background download runner ────────────────────────────────────────────────
+function runDownloadJob(jobId, url, format, quality) {
+  const job      = jobs.get(jobId);
+  const platform = detectPlatform(url);
+  const outTpl   = path.join(DOWNLOADS, `${jobId}.%(ext)s`);
+
+  // Spotify: no yt-dlp progress events — just resolve when done
+  if (platform.id === 'spotify') {
+    spotifyDownload(url, jobId)
+      .then(file => {
+        if (!file || !fs.existsSync(file)) {
+          job.status = 'error'; job.error = 'Download produced no output file.';
+        } else {
+          job.status = 'done';
+          job.result = buildResult(jobId, file);
+        }
+      })
+      .catch(err => {
+        job.status = 'error';
+        job.error  = lastLines(err.message || String(err)) || 'Download failed.';
+      });
+    return;
+  }
+
+  const args    = format === 'audio'
+    ? ytdlpAudioArgs(url, outTpl, quality)
+    : ytdlpVideoArgs(url, outTpl, quality);
+  const emitter = ytDlp.exec(args);
+
+  emitter.on('progress', progress => { job.progress = progress; });
+
+  emitter.on('close', () => {
+    if (job.status !== 'running') return;
+    const file = findOutput(jobId);
+    if (file && fs.existsSync(file)) {
+      job.status = 'done'; job.result = buildResult(jobId, file);
+    } else {
+      job.status = 'error'; job.error = 'Download produced no output file.';
+    }
+  });
+
+  emitter.on('error', err => {
+    if (job.status !== 'running') return;
+    job.status = 'error';
+    job.error  = lastLines(err.message || String(err)) || 'Download failed.';
+  });
+}
+
+function buildResult(jobId, file) {
+  return {
+    status:       'ok',
+    filename:     path.basename(file),
+    download_url: `/files/${path.basename(file)}`,
+    server_path:  file,
+  };
 }
 
 // ── Express app ───────────────────────────────────────────────────────────────
@@ -210,40 +296,70 @@ app.post('/api/info', async (req, res) => {
   }
 });
 
-// POST /api/download
-app.post('/api/download', async (req, res) => {
+// POST /api/download — starts a background job, returns { jobId } immediately
+app.post('/api/download', (req, res) => {
   const { url, format = 'video', quality = 'best' } = req.body || {};
   if (!url || !isValidUrl(url)) return res.status(400).json({ error: 'Enter a valid URL.' });
 
-  const platform = detectPlatform(url);
-  const jobId    = crypto.randomBytes(12).toString('hex');
-  const outTpl   = path.join(DOWNLOADS, `${jobId}.%(ext)s`);
+  const jobId = crypto.randomBytes(12).toString('hex');
+  jobs.set(jobId, { status: 'running', progress: null, result: null, error: null });
+  runDownloadJob(jobId, url, format, quality);
+  res.json({ jobId });
+});
+
+// GET /api/stream/:jobId — SSE: sends progress, then done/fail event
+app.get('/api/stream/:jobId', (req, res) => {
+  const { jobId } = req.params;
+  if (!jobs.has(jobId)) return res.status(404).json({ error: 'Job not found.' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = (evt, data) => res.write(`event: ${evt}\ndata: ${JSON.stringify(data)}\n\n`);
+  send('open', { jobId });
+
+  const tick = setInterval(() => {
+    const job = jobs.get(jobId);
+    if (!job) { clearInterval(tick); res.end(); return; }
+
+    if (job.progress) { send('progress', job.progress); job.progress = null; }
+
+    if (job.status === 'done') {
+      send('done', job.result);
+      clearInterval(tick); res.end();
+      setTimeout(() => jobs.delete(jobId), 60_000);
+    } else if (job.status === 'error') {
+      send('fail', { error: job.error });
+      clearInterval(tick); res.end();
+      jobs.delete(jobId);
+    }
+  }, 250);
+
+  req.on('close', () => clearInterval(tick));
+});
+
+// POST /api/playlist — returns flat list of playlist entries
+app.post('/api/playlist', async (req, res) => {
+  const { url } = req.body || {};
+  if (!url || !isValidUrl(url)) return res.status(400).json({ error: 'Enter a valid URL.' });
 
   try {
-    let file;
-
-    if (platform.id === 'spotify') {
-      file = await spotifyDownload(url, jobId);
-    } else {
-      const args = format === 'audio'
-        ? ytdlpAudioArgs(url, outTpl, quality)
-        : ytdlpVideoArgs(url, outTpl, quality);
-      await ytDlp.execPromise(args);
-      file = findOutput(jobId);
-    }
-
-    if (!file || !fs.existsSync(file)) {
-      return res.status(500).json({ error: 'Download produced no output file.' });
-    }
-
-    res.json({
-      status:       'ok',
-      filename:     path.basename(file),
-      download_url: `/files/${path.basename(file)}`,
-      server_path:  file,
-    });
+    const raw  = await ytDlp.execPromise([
+      url, '--flat-playlist', '--yes-playlist', '--dump-single-json', '--no-warnings',
+    ]);
+    const data = JSON.parse(raw);
+    const entries = (data.entries || []).map(e => ({
+      url:      e.url || e.webpage_url || (e.id ? `https://www.youtube.com/watch?v=${e.id}` : null),
+      title:    e.title    || 'Video',
+      duration: e.duration || null,
+      thumbnail: e.thumbnail || (e.thumbnails?.at(-1)?.url ?? null),
+      uploader: e.uploader  || e.channel || null,
+    })).filter(e => e.url);
+    res.json({ title: data.title || 'Playlist', count: entries.length, entries });
   } catch (err) {
-    res.status(400).json({ error: lastLines(err.message || String(err)) || 'Download failed.' });
+    res.status(400).json({ error: lastLines(err.message || String(err)) || 'Could not load playlist.' });
   }
 });
 

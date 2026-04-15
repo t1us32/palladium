@@ -57,6 +57,13 @@ ipcMain.handle('save-file', async (_, { serverPath, suggestedName }) => {
   return { saved: true, filePath: dest, folderPath: app.getPath('downloads') };
 });
 
+// Auto-save without dialog — used by queue items so they don't block each other
+ipcMain.handle('save-file-auto', async (_, { serverPath, suggestedName }) => {
+  const dest = path.join(app.getPath('downloads'), suggestedName);
+  await fs.promises.copyFile(serverPath, dest);
+  return { saved: true, filePath: dest, folderPath: app.getPath('downloads') };
+});
+
 ipcMain.handle('open-folder', (_, folderPath) => {
   shell.openPath(folderPath);
 });

@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Save a downloaded file — either via native save-dialog or directly to Downloads folder
   saveFile: (opts) => ipcRenderer.invoke('save-file', opts),
+  // Auto-save without dialog (used by queue)
+  saveFileAuto: (opts) => ipcRenderer.invoke('save-file-auto', opts),
 
   // Open the folder that contains the saved file in the OS file manager
   openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),

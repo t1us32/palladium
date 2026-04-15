@@ -655,7 +655,6 @@ body {
   font-size: 14px;
   font-weight: 500;
   color: var(--mid-gray);
-  margin-bottom: 14px;
 }
 
 .track {
@@ -1450,6 +1449,265 @@ body {
   text-align: center;
   font-size: 13px;
   color: var(--mid-gray);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Download row (Download btn + Add-to-queue btn)
+   ───────────────────────────────────────────────────────────────────────────── */
+.dl-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.btn-grow {
+  flex: 1;
+  padding: 11px 18px;
+  font-size: 15px;
+}
+
+.btn-icon {
+  flex-shrink: 0;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.qi-plus {
+  opacity: 0.6;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Playlist banner
+   ───────────────────────────────────────────────────────────────────────────── */
+.playlist-banner {
+  padding: 8px 0 0;
+}
+
+.pl-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pl-checkbox {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  accent-color: var(--charcoal);
+  cursor: pointer;
+}
+
+.pl-label {
+  font-size: 13px;
+  color: var(--mid-gray);
+  font-weight: 400;
+}
+
+.pl-count {
+  opacity: 0.65;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Progress card — enhanced with percentage + meta
+   ───────────────────────────────────────────────────────────────────────────── */
+.progress-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.progress-pct {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--charcoal);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-meta {
+  font-size: 12px;
+  color: var(--mid-gray);
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Queue section
+   ───────────────────────────────────────────────────────────────────────────── */
+.queue-section {
+  padding: 14px 16px 8px;
+}
+
+.queue-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.queue-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--charcoal);
+}
+
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--off-white);
+}
+
+[data-theme="dark"] .queue-item {
+  border-top-color: rgba(255,255,255,0.06);
+}
+
+.queue-item:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.queue-item:last-child {
+  padding-bottom: 0;
+}
+
+.qi-thumb {
+  width: 46px;
+  height: 34px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--off-white);
+}
+
+.qi-thumb-ph {
+  width: 46px;
+  height: 34px;
+  border-radius: 4px;
+  background: var(--off-white);
+  flex-shrink: 0;
+}
+
+.qi-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qi-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--charcoal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qi-sub {
+  font-size: 11px;
+  color: var(--mid-gray);
+  text-transform: capitalize;
+}
+
+.qi-track {
+  height: 2px;
+  background: var(--off-white);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  margin-top: 5px;
+}
+
+[data-theme="dark"] .qi-track {
+  background: rgba(255,255,255,0.08);
+}
+
+.qi-fill {
+  height: 100%;
+  background: var(--charcoal);
+  border-radius: var(--r-pill);
+  transition: width 0.4s linear;
+}
+
+.qi-err-msg {
+  font-size: 11px;
+  color: #c0392b;
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qi-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.qi-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+
+.qi-wait {
+  color: var(--mid-gray);
+  background: var(--off-white);
+}
+
+.qi-dl {
+  color: var(--charcoal);
+  background: var(--off-white);
+  font-variant-numeric: tabular-nums;
+}
+
+.qi-done {
+  color: #1a8a3e;
+  background: rgba(26,138,62,0.10);
+}
+
+[data-theme="dark"] .qi-done {
+  color: #4caf72;
+  background: rgba(76,175,114,0.12);
+}
+
+.qi-err {
+  color: #c0392b;
+  background: rgba(192,57,43,0.09);
+}
+
+.qi-folder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--mid-gray);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.qi-folder:hover {
+  background: var(--off-white);
+  color: var(--charcoal);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

@@ -7,9 +7,14 @@ const urlInput = $('urlInput');
 const fetchBtn = $('fetchBtn');
 const errorMsg = $('errorMsg');
 const previewCard = $('previewCard');
-const progressCard = $('progressCard');
+const progressCard  = $('progressCard');
 const progressLabel = $('progressLabel');
-const doneCard = $('doneCard');
+const progressPct   = $('progressPct');
+const progressFill  = $('progressFill');
+const progressMeta  = $('progressMeta');
+const queueSection  = $('queueSection');
+const queueList     = $('queueList');
+const doneCard      = $('doneCard');
 const downloadBtn = $('downloadBtn');
 const downloadLink = $('downloadLink');
 const openFolderBtn = $('openFolderBtn');
@@ -410,6 +415,55 @@ appEl.addEventListener('drop', e => {
   }
 });
 
+// ── Playlist ──────────────────────────────────────────────────────────────────
+const PLAYLIST_RE = [
+  /[?&]list=[A-Za-z0-9_-]+/,          // YouTube ?list=
+  /youtube\.com\/(playlist|watch\?.*list=)/i,
+  /soundcloud\.com\/[^/]+\/sets\//i,
+  /spotify\.com\/(album|playlist)\//i,
+];
+
+function looksLikePlaylist(url) {
+  try { return PLAYLIST_RE.some(r => r.test(url)); } catch { return false; }
+}
+
+let playlistEntries = [];
+
+async function downloadPlaylist(url) {
+  closeAllModals();
+  const banner = $('playlistBanner');
+  // Show loading state in banner
+  $('playlistCount').textContent = 'Loading…';
+
+  try {
+    const res  = await fetch('/api/playlist', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) { showError(data.error || 'Could not load playlist.'); return; }
+
+    playlistEntries = data.entries || [];
+    playlistEntries.forEach(e => addToQueue({
+      url:      e.url,
+      title:    e.title,
+      thumbnail: e.thumbnail,
+      platform: currentPlatform,
+      format:   selectedFormat,
+      quality:  selectedQuality,
+    }));
+
+    // Reset
+    urlInput.value = ''; videoTitle = '';
+    $('playlistToggle').checked = false;
+    hide(previewCard, banner);
+    clearError();
+    refreshRecent();
+  } catch {
+    showError('Network error loading playlist.');
+  }
+}
+
 // ── Fetch info ────────────────────────────────────────────────────────────────
 fetchBtn.addEventListener('click', fetchInfo);
 urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') fetchInfo(); });
@@ -464,6 +518,25 @@ async function fetchInfo() {
     if (data.uploader) { up.textContent = `@${data.uploader}`; show(up); }
     else { hide(up); }
 
+    // Playlist detection
+    const playlistBanner = $('playlistBanner');
+    const playlistToggle = $('playlistToggle');
+    if (looksLikePlaylist(url)) {
+      // Peek at playlist count in background (non-blocking)
+      $('playlistCount').textContent = '';
+      playlistBanner.classList.remove('hidden');
+      playlistToggle.checked = false;
+      fetch('/api/playlist', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      }).then(r => r.json()).then(d => {
+        if (d.count > 1) $('playlistCount').textContent = `· ${d.count} videos`;
+      }).catch(() => {});
+    } else {
+      playlistBanner.classList.add('hidden');
+      playlistToggle.checked = false;
+    }
+
     show(previewCard);
   } catch {
     showError('Network error — is the server running?');
@@ -473,42 +546,273 @@ async function fetchInfo() {
   }
 }
 
+// ── Queue ─────────────────────────────────────────────────────────────────────
+// Each item: { qid, url, title, thumbnail, platform, format, quality, status,
+//              progress?, result?, error? }
+const dlQueue = [];
+let queueBusy = false;
+
+function genQid() { return Math.random().toString(36).slice(2, 10); }
+
+function sanitizeName(t) { return (t || 'download').replace(/[^\w\s.\-()]/g, '').trim() || 'download'; }
+
+function addToQueue(item) {
+  dlQueue.push({ ...item, qid: genQid(), status: 'waiting' });
+  renderQueue();
+  drainQueue();
+}
+
+async function drainQueue() {
+  if (queueBusy) return;
+  const item = dlQueue.find(i => i.status === 'waiting');
+  if (!item) return;
+
+  queueBusy    = true;
+  item.status  = 'downloading';
+  item.progress = null;
+  renderQueue();
+
+  try {
+    const res  = await fetch('/api/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: item.url, format: item.format, quality: item.quality }),
+    });
+    const body = await res.json();
+
+    if (!res.ok || body.error) {
+      item.status = 'error'; item.error = body.error || 'Download failed.';
+      renderQueue(); queueBusy = false; drainQueue(); return;
+    }
+
+    await streamJob(body.jobId, item);
+
+  } catch {
+    item.status = 'error'; item.error = 'Network error.';
+    renderQueue();
+  }
+  queueBusy = false;
+  renderQueue();
+  drainQueue();
+}
+
+function streamJob(jobId, item) {
+  return new Promise(resolve => {
+    const es = new EventSource(`/api/stream/${jobId}`);
+
+    es.addEventListener('progress', e => {
+      item.progress = JSON.parse(e.data);
+      renderQueueItem(item);
+    });
+
+    es.addEventListener('done', async e => {
+      es.close();
+      const data = JSON.parse(e.data);
+      // Auto-save to Downloads; don't block the queue with a per-item dialog
+      if (IS_ELECTRON) {
+        const ext  = data.filename.split('.').pop();
+        const name = `${sanitizeName(item.title)}.${ext}`;
+        try {
+          const result = await window.electronAPI.saveFileAuto({ serverPath: data.server_path, suggestedName: name });
+          item.result = { ...data, folderPath: result.folderPath };
+        } catch {
+          item.result = data;
+        }
+      } else {
+        item.result = data;
+      }
+      item.status = 'done';
+      await addHistoryEntry({
+        title:      item.title || 'Video',
+        platform:   item.platform,
+        format:     item.format,
+        savedAt:    Date.now(),
+        folderPath: item.result?.folderPath || null,
+      });
+      refreshRecent();
+      resolve();
+    });
+
+    es.addEventListener('fail', e => {
+      es.close();
+      try { item.error = JSON.parse(e.data).error; } catch { item.error = 'Download failed.'; }
+      item.status = 'error';
+      resolve();
+    });
+
+    es.onerror = () => {
+      if (es.readyState === EventSource.CLOSED && item.status === 'downloading') {
+        item.status = 'error'; item.error = 'Connection lost.';
+        resolve();
+      }
+    };
+  });
+}
+
+function renderQueue() {
+  if (dlQueue.length === 0) { hide(queueSection); return; }
+  show(queueSection);
+  queueList.innerHTML = dlQueue.map(renderQueueItemHTML).join('');
+  // Wire up folder-open buttons
+  queueList.querySelectorAll('[data-qi-folder]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (IS_ELECTRON) window.electronAPI.openFolder(btn.dataset.qiFolder);
+    });
+  });
+}
+
+function renderQueueItem(item) {
+  const el = queueList.querySelector(`[data-qid="${item.qid}"]`);
+  if (el) el.outerHTML = renderQueueItemHTML(item);
+}
+
+function renderQueueItemHTML(item) {
+  const pct = item.progress ? parseFloat(item.progress.percent) : null;
+  const statusHTML = {
+    waiting:     `<span class="qi-badge qi-wait">Waiting</span>`,
+    downloading: `<span class="qi-badge qi-dl">${pct != null ? Math.round(pct) + '%' : '…'}</span>`,
+    done:        `<span class="qi-badge qi-done">✓ Done</span>`,
+    error:       `<span class="qi-badge qi-err">✕ Error</span>`,
+  }[item.status] || '';
+
+  const folderBtn = item.status === 'done' && item.result?.folderPath
+    ? `<button class="qi-folder" data-qi-folder="${item.result.folderPath}" title="Open folder">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+      </button>` : '';
+
+  const webLink = item.status === 'done' && !IS_ELECTRON && item.result?.download_url
+    ? `<a class="qi-folder btn-link" href="${item.result.download_url}" download="${item.result.filename}">Save</a>` : '';
+
+  const progressBar = item.status === 'downloading' && pct != null
+    ? `<div class="qi-track"><div class="qi-fill" style="width:${pct}%"></div></div>` : '';
+
+  return `
+    <div class="queue-item" data-qid="${item.qid}">
+      ${item.thumbnail
+        ? `<img class="qi-thumb" src="${item.thumbnail}" alt="" />`
+        : `<div class="qi-thumb qi-thumb-ph"></div>`}
+      <div class="qi-body">
+        <p class="qi-title">${item.title || 'Untitled'}</p>
+        <p class="qi-sub">${[item.platform, item.format, item.quality !== 'best' ? item.quality : null].filter(Boolean).join(' · ')}</p>
+        ${progressBar}
+        ${item.status === 'error' && item.error ? `<p class="qi-err-msg">${item.error}</p>` : ''}
+      </div>
+      <div class="qi-right">${statusHTML}${folderBtn}${webLink}</div>
+    </div>`;
+}
+
+$('clearDoneBtn').addEventListener('click', () => {
+  const active = dlQueue.filter(i => i.status !== 'done');
+  dlQueue.length = 0; dlQueue.push(...active);
+  renderQueue();
+});
+
 // ── Download ──────────────────────────────────────────────────────────────────
 downloadBtn.addEventListener('click', startDownload);
+$('addToQueueBtn').addEventListener('click', () => {
+  const url = urlInput.value.trim();
+  if (!url) return;
+  addToQueue({
+    url,
+    title:    videoTitle,
+    thumbnail: $('thumbnail').src || null,
+    platform: currentPlatform,
+    format:   selectedFormat,
+    quality:  selectedQuality,
+  });
+  // Reset UI so user can add another URL right away
+  urlInput.value = '';
+  videoTitle = '';
+  clearError();
+  hide(previewCard, $('playlistBanner'));
+  refreshRecent();
+  urlInput.focus();
+});
 
 async function startDownload() {
   const url = urlInput.value.trim();
   if (!url) return;
 
+  // Playlist mode: load entries and add all to queue
+  if ($('playlistToggle').checked) {
+    await downloadPlaylist(url);
+    return;
+  }
+
   closeAllModals();
   hide(previewCard, recentSection);
-  progressLabel.textContent = selectedFormat === 'audio' ? 'Downloading audio…' : 'Downloading video…';
-  show(progressCard);
 
+  // Start job on server
+  let jobId;
   try {
-    const res = await fetch('/api/download', {
+    const res  = await fetch('/api/download', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, format: selectedFormat, quality: selectedQuality }),
     });
-    const data = await res.json();
-
-    if (!res.ok) {
-      hide(progressCard);
-      show(previewCard);
-      showError(data.error || 'Download failed.');
-      return;
+    const body = await res.json();
+    if (!res.ok || body.error) {
+      show(previewCard); showError(body.error || 'Download failed.'); return;
     }
-
-    hide(progressCard);
-    await handleSave(data);
-    show(doneCard);
-
+    jobId = body.jobId;
   } catch {
-    hide(progressCard);
-    show(previewCard);
-    showError('Network error during download.');
+    show(previewCard); showError('Network error.'); return;
   }
+
+  // Show progress card with real progress via SSE
+  progressLabel.textContent = selectedFormat === 'audio' ? 'Downloading audio…' : 'Downloading video…';
+  progressPct.textContent   = '';
+  progressFill.className    = 'fill indeterminate';
+  progressFill.style.width  = '';
+  hide(progressMeta);
+  show(progressCard);
+
+  await new Promise(resolve => {
+    const es = new EventSource(`/api/stream/${jobId}`);
+
+    es.addEventListener('progress', e => {
+      const p   = JSON.parse(e.data);
+      const pct = parseFloat(p.percent);
+      if (!isNaN(pct)) {
+        progressFill.className   = 'fill';
+        progressFill.style.width = pct + '%';
+        progressPct.textContent  = Math.round(pct) + '%';
+      }
+      const meta = [p.currentSpeed, p.eta ? 'ETA ' + p.eta : null].filter(Boolean).join('  ·  ');
+      if (meta) { progressMeta.textContent = meta; show(progressMeta); }
+    });
+
+    es.addEventListener('done', async e => {
+      es.close();
+      hide(progressCard);
+      await handleSave(JSON.parse(e.data));
+      show(doneCard);
+      resolve();
+    });
+
+    es.addEventListener('fail', e => {
+      es.close();
+      hide(progressCard); show(previewCard);
+      let msg = 'Download failed.';
+      try { msg = JSON.parse(e.data).error || msg; } catch {}
+      showError(msg);
+      resolve();
+    });
+
+    es.onerror = () => {
+      if (es.readyState === EventSource.CLOSED) {
+        es.close();
+        if (!doneCard.classList.contains('hidden') || !previewCard.classList.contains('hidden')) {
+          resolve(); return;
+        }
+        hide(progressCard); show(previewCard);
+        showError('Connection lost.');
+        resolve();
+      }
+    };
+  });
 }
 
 async function handleSave(data) {

@@ -2,10 +2,11 @@ name: Build
 
 on:
   push:
-    tags: ['v*']          # запускается при git tag v1.0.0 && git push --tags
-  workflow_dispatch:      # или вручную из GitHub UI
+    tags: ['v*']        # запускается при: git tag v1.0.0 && git push --tags
+  workflow_dispatch:    # или вручную из GitHub → Actions → Run workflow
 
 jobs:
+  # ── macOS DMG ──────────────────────────────────────────────────────────────
   build-mac:
     runs-on: macos-latest
     steps:
@@ -19,20 +20,46 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Prepare binaries (downloads yt-dlp for macOS)
-        run: node scripts/prepare-bins.js
-
       - name: Build DMG
-        run: npx electron-builder --mac
+        # npm run build:mac уже вызывает prepare-bins.js (скачивает yt-dlp_macos)
+        # CSC_IDENTITY_AUTO_DISCOVERY=false — отключает поиск сертификата Apple,
+        # иначе electron-builder падает на GitHub runner без Apple Developer аккаунта
+        run: npm run build:mac
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: Palladium-mac
           path: dist/*.dmg
+          if-no-files-found: error
 
+  # ── Windows NSIS installer ─────────────────────────────────────────────────
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build installer
+        run: npm run build:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Palladium-win
+          path: dist/*.exe
+          if-no-files-found: error
+
+  # ── Linux AppImage ─────────────────────────────────────────────────────────
   build-linux:
     runs-on: ubuntu-latest
     steps:
@@ -46,14 +73,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Prepare binaries
-        run: node scripts/prepare-bins.js
-
       - name: Build AppImage
-        run: npx electron-builder --linux
+        run: npm run build:linux
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: Palladium-linux
           path: dist/*.AppImage
+          if-no-files-found: error
