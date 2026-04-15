@@ -71,10 +71,10 @@ const jobs = new Map();
 let ytDlp;
 
 // Map runtime platform+arch to the correct yt-dlp GitHub release filename.
-// 'yt-dlp' (no suffix) is a Python zipapp and does NOT work without Python.
+// 'yt-dlp' (bare) is a Python zipapp — it won't work without Python.
 function ytDlpReleaseName() {
   const p = os.platform();
-  if (p === 'win32') return 'yt-dlp.exe';
+  if (p === 'win32')  return 'yt-dlp.exe';
   if (p === 'darwin') return 'yt-dlp_macos';
   const a = os.arch();
   if (a === 'arm64') return 'yt-dlp_linux_aarch64';
@@ -82,14 +82,50 @@ function ytDlpReleaseName() {
   return 'yt-dlp_linux';
 }
 
+// Native https download with redirect following — avoids yt-dlp-wrap internals
+// that throw non-Error objects and cause "Failed: undefined".
+function httpsGet(url) {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: { 'User-Agent': 'palladium/1.0' } }, res => {
+      if (res.statusCode === 301 || res.statusCode === 302)
+        return httpsGet(res.headers.location).then(resolve).catch(reject);
+      if (res.statusCode !== 200)
+        return reject(new Error(`HTTP ${res.statusCode} from ${url}`));
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', c => { body += c; });
+      res.on('end', () => resolve(body));
+      res.on('error', reject);
+    }).on('error', reject);
+  });
+}
+
+function httpsDownload(url, dest) {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: { 'User-Agent': 'palladium/1.0' } }, res => {
+      if (res.statusCode === 301 || res.statusCode === 302)
+        return httpsDownload(res.headers.location, dest).then(resolve).catch(reject);
+      if (res.statusCode !== 200)
+        return reject(new Error(`HTTP ${res.statusCode} downloading ${url}`));
+      const tmp  = dest + '.tmp';
+      const file = fs.createWriteStream(tmp);
+      res.pipe(file);
+      file.on('finish', () => file.close(() => { fs.renameSync(tmp, dest); resolve(); }));
+      file.on('error', err => { try { fs.unlinkSync(tmp); } catch {} reject(err); });
+      res.on('error',  err => { try { fs.unlinkSync(tmp); } catch {} reject(err); });
+    }).on('error', reject);
+  });
+}
+
 async function initYtDlp() {
   if (!fs.existsSync(BIN_PATH)) {
     console.log('[yt-dlp] Downloading binary for', os.platform(), os.arch(), '…');
-    const releases  = await YTDlpWrap.getGithubReleases(1, 1);
-    const version   = releases[0].tag_name;
-    const fileName  = ytDlpReleaseName();
-    const fileURL   = `https://github.com/yt-dlp/yt-dlp/releases/download/${version}/${fileName}`;
-    await YTDlpWrap.downloadFile(fileURL, BIN_PATH);
+    const body    = await httpsGet('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest');
+    const version = JSON.parse(body).tag_name;
+    const fileURL = `https://github.com/yt-dlp/yt-dlp/releases/download/${version}/${ytDlpReleaseName()}`;
+    await httpsDownload(fileURL, BIN_PATH);
     if (os.platform() !== 'win32') fs.chmodSync(BIN_PATH, 0o755);
     console.log('[yt-dlp] Ready:', BIN_PATH);
   }

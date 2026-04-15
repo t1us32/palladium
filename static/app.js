@@ -1157,7 +1157,8 @@ resetBtn.addEventListener('click', () => {
   videoTitle = '';
   filenameInput.value = '';
   clearError();
-  hide(previewCard, progressCard, doneCard, openFolderBtn, filenameInput);
+  hide(previewCard, progressCard, doneCard, openFolderBtn, filenameInput, $('playlistBanner'));
+  $('playlistToggle').checked = false;
   show(downloadLink); // restore for web mode
   refreshRecent();
   urlInput.focus();
