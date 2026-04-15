@@ -683,7 +683,7 @@ function renderQueueItemHTML(item) {
       </button>` : '';
 
   const webLink = item.status === 'done' && !IS_ELECTRON && item.result?.download_url
-    ? `<a class="qi-folder btn-link" href="${item.result.download_url}" download="${item.result.filename}">Save</a>` : '';
+    ? `<a class="btn-link" href="${item.result.download_url}" download="${item.result.filename}">Save</a>` : '';
 
   const progressBar = item.status === 'downloading' && pct != null
     ? `<div class="qi-track"><div class="qi-fill" style="width:${pct}%"></div></div>` : '';

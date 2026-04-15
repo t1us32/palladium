@@ -119,7 +119,21 @@ function httpsDownload(url, dest) {
   });
 }
 
+function isStaleZipapp(filePath) {
+  try {
+    const head = Buffer.alloc(2);
+    const fd   = fs.openSync(filePath, 'r');
+    fs.readSync(fd, head, 0, 2, 0);
+    fs.closeSync(fd);
+    return head.toString() === '#!';
+  } catch { return false; }
+}
+
 async function initYtDlp() {
+  if (fs.existsSync(BIN_PATH) && isStaleZipapp(BIN_PATH)) {
+    console.log('[yt-dlp] Stale Python zipapp detected — removing…');
+    fs.unlinkSync(BIN_PATH);
+  }
   if (!fs.existsSync(BIN_PATH)) {
     console.log('[yt-dlp] Downloading binary for', os.platform(), os.arch(), '…');
     const body    = await httpsGet('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest');

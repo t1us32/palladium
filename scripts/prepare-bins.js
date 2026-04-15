@@ -36,6 +36,19 @@ const BIN_PATH    = path.join(BIN_DIR, BIN_NAME);
 
 fs.mkdirSync(BIN_DIR, { recursive: true });
 
+// If a stale Python zipapp was downloaded by old code, force re-download.
+// Python scripts start with '#!' — real platform binaries never do.
+if (fs.existsSync(BIN_PATH)) {
+  const head = Buffer.alloc(2);
+  const fd   = fs.openSync(BIN_PATH, 'r');
+  fs.readSync(fd, head, 0, 2, 0);
+  fs.closeSync(fd);
+  if (head.toString() === '#!') {
+    console.log('[prepare-bins] Stale Python zipapp detected — removing…');
+    fs.unlinkSync(BIN_PATH);
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** GET with redirect following; returns response body as string. */
@@ -82,12 +95,22 @@ function downloadFile(url, dest) {
   });
 }
 
-/** Fetch latest yt-dlp release tag from GitHub API. */
-async function getLatestTag() {
-  const body = await get('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest');
-  const tag  = JSON.parse(body).tag_name;
-  if (!tag) throw new Error('Could not find tag_name in GitHub API response');
-  return tag;
+/** Fetch latest yt-dlp release tag by following the /releases/latest redirect. */
+function getLatestTag() {
+  return new Promise((resolve, reject) => {
+    const url = 'https://github.com/yt-dlp/yt-dlp/releases/latest';
+    https.get(url, { headers: { 'User-Agent': 'palladium-build/1.0' } }, res => {
+      const location = res.headers.location;
+      if ((res.statusCode === 301 || res.statusCode === 302) && location) {
+        // location is like: https://github.com/yt-dlp/yt-dlp/releases/tag/2025.04.30
+        const match = location.match(/\/releases\/tag\/([^/]+)$/);
+        if (!match) return reject(new Error(`Unexpected redirect location: ${location}`));
+        res.resume();
+        return resolve(match[1]);
+      }
+      reject(new Error(`Expected redirect from ${url}, got HTTP ${res.statusCode}`));
+    }).on('error', reject);
+  });
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
