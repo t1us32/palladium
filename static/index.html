@@ -250,7 +250,7 @@
         </svg>
         <p class="edit-drop-label">Drop a file here</p>
         <p class="edit-drop-sub">or <button id="editPickBtn" class="btn-link">pick a file</button></p>
-        <input id="editFileInput" type="file" accept="video/*,audio/*" class="hidden" />
+        <input id="editFileInput" type="file" accept="video/*,audio/*,image/*" class="hidden" />
       </div>
 
       <!-- Trim panel (shown after file loaded) -->
@@ -276,6 +276,11 @@
         </div>
 
         <div class="divider"></div>
+
+        <!-- Image preview (shown for image files) -->
+        <div id="editImgPreviewWrap" class="edit-preview-wrap hidden">
+          <img id="editImgPreview" class="edit-img-preview" alt="" />
+        </div>
 
         <!-- Video preview -->
         <div id="editPreviewWrap" class="edit-preview-wrap hidden">
@@ -305,7 +310,7 @@
         </div>
 
         <!-- Unified timeline -->
-        <div class="edit-timeline">
+        <div id="editTimeline" class="edit-timeline">
           <div class="et-wrap" id="etWrap">
             <div class="et-region" id="etRegion"></div>
             <div class="et-handle et-handle-s" id="etHandleS"></div>
@@ -327,16 +332,26 @@
         <!-- Status -->
         <p id="editErrorMsg" class="error-msg hidden"></p>
 
-        <button id="editTrimBtn" class="btn-primary btn-full">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="6" cy="20" r="2"/><circle cx="18" cy="20" r="2"/>
-            <circle cx="6" cy="4" r="2"/><line x1="6" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="12" x2="18" y2="12"/>
-            <line x1="14" y1="8" x2="18" y2="20"/>
-          </svg>
-          Trim
-        </button>
+        <div class="dl-row">
+          <button id="editTrimBtn" class="btn-primary btn-grow">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="6" cy="20" r="2"/><circle cx="18" cy="20" r="2"/>
+              <circle cx="6" cy="4" r="2"/><line x1="6" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="12" x2="18" y2="12"/>
+              <line x1="14" y1="8" x2="18" y2="20"/>
+            </svg>
+            Trim
+          </button>
+          <button id="editUpscaleBtn" class="btn-ghost hidden">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+              <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+            </svg>
+            Upscale 2×
+          </button>
+        </div>
 
       </div>
 

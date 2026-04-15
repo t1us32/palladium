@@ -844,6 +844,15 @@ body {
   opacity: 0.7;
 }
 
+.edit-img-preview {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  background: var(--off-white);
+  border-radius: var(--r-lg);
+}
+
 /* Edit panel (after file loaded) */
 .edit-panel {
   display: flex;

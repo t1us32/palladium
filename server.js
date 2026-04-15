@@ -448,6 +448,40 @@ app.post('/api/trim', upload.single('file'), async (req, res) => {
   }
 });
 
+// POST /api/upscale
+app.post('/api/upscale', upload.single('file'), async (req, res) => {
+  const inputPath = req.file?.path;
+  if (!inputPath) return res.status(400).json({ error: 'No file provided.' });
+
+  const ext    = path.extname(req.file.originalname).toLowerCase() || '.mp4';
+  const jobId  = crypto.randomBytes(12).toString('hex');
+  const output = path.join(DOWNLOADS, `${jobId}${ext}`);
+
+  try {
+    const isImage = (req.file.mimetype || '').startsWith('image/');
+    const args = [
+      '-y', '-i', inputPath,
+      '-vf', 'scale=iw*2:ih*2:flags=lanczos',
+      ...(isImage ? [] : ['-c:a', 'copy']),
+      output,
+    ];
+    await execFileAsync(FFMPEG_BIN, args, { timeout: 600_000 });
+    fs.unlinkSync(inputPath);
+
+    if (!fs.existsSync(output)) return res.status(500).json({ error: 'Upscale produced no output.' });
+
+    res.json({
+      status:       'ok',
+      filename:     path.basename(output),
+      download_url: `/files/${path.basename(output)}`,
+      server_path:  output,
+    });
+  } catch (err) {
+    try { fs.unlinkSync(inputPath); } catch {}
+    res.status(500).json({ error: lastLines(err.message || String(err)) || 'Upscale failed.' });
+  }
+});
+
 // GET /files/:filename
 app.get('/files/:filename', (req, res) => {
   const name = path.basename(req.params.filename);

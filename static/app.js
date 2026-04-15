@@ -332,6 +332,7 @@ historyBtn.addEventListener('click', async () => {
 // ── Recent (inline idle-state history) ───────────────────────────────────────
 const VIDEO_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`;
 const AUDIO_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+const IMAGE_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
 const FOLDER_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
 
 function renderRecent(items) {
@@ -957,15 +958,27 @@ function loadEditFile(file) {
   editFile = file;
   if (editObjectURL) URL.revokeObjectURL(editObjectURL);
   editObjectURL = URL.createObjectURL(file);
+
+  const isImage = file.type.startsWith('image/');
+  const isAudio = file.type.startsWith('audio/');
+
+  $('editFileName').textContent = file.name;
+  $('editFileIcon').innerHTML = isImage ? IMAGE_ICON : (isAudio ? AUDIO_ICON : VIDEO_ICON);
+
+  if (isImage) {
+    editDuration = 0;
+    $('editFileDuration').textContent = '';
+    $('editImgPreview').src = editObjectURL;
+    setPreviewPlaying(false);
+    hide(editDropZone, editDoneCard, editErrorMsg, editPreviewWrap, $('editTimeline'), editTrimBtn);
+    show($('editImgPreviewWrap'), $('editUpscaleBtn'), editPanel);
+    return;
+  }
+
   editMediaEl.src = editObjectURL;
   editMediaEl.addEventListener('loadedmetadata', () => {
     editDuration = Math.floor(editMediaEl.duration);
-    $('editFileName').textContent = file.name;
     $('editFileDuration').textContent = fmtSecs(editDuration);
-
-    // icon: video vs audio
-    const isAudio = file.type.startsWith('audio');
-    $('editFileIcon').innerHTML = isAudio ? AUDIO_ICON : VIDEO_ICON;
 
     trimStart = 0;
     trimEnd = editDuration;
@@ -973,8 +986,10 @@ function loadEditFile(file) {
     trimEndInput.value = fmtSecs(editDuration);
 
     editPreviewPlayer.classList.toggle('audio-mode', isAudio);
+    $('editUpscaleBtn').classList.toggle('hidden', isAudio);
     setPreviewPlaying(false);
-    show(editPreviewWrap);
+    hide($('editImgPreviewWrap'));
+    show(editPreviewWrap, $('editTimeline'), editTrimBtn);
 
     updateTrimUI();
     updatePreviewHead();
@@ -1086,7 +1101,7 @@ $('editClearBtn').addEventListener('click', () => {
   editMediaEl.pause();
   setPreviewPlaying(false);
   editFile = null;
-  hide(editPanel, editDoneCard, editPreviewWrap);
+  hide(editPanel, editDoneCard, editPreviewWrap, $('editImgPreviewWrap'));
   show(editDropZone);
   editFileInput.value = '';
 });
@@ -1140,13 +1155,61 @@ editTrimBtn.addEventListener('click', async () => {
   }
 });
 
+$('editUpscaleBtn').addEventListener('click', async () => {
+  if (!editFile) return;
+  editErrorMsg.classList.add('hidden');
+  const btn = $('editUpscaleBtn');
+  btn.disabled = true;
+  btn.textContent = 'Upscaling…';
+
+  const fd = new FormData();
+  fd.append('file', editFile);
+
+  try {
+    const res = await fetch('/api/upscale', { method: 'POST', body: fd });
+    const data = await res.json();
+
+    if (!res.ok) {
+      editErrorMsg.textContent = data.error || 'Upscale failed.';
+      show(editErrorMsg);
+      return;
+    }
+
+    if (IS_ELECTRON) {
+      const ext = editFile.name.split('.').pop();
+      const name = editFile.name.replace(/\.[^.]+$/, '') + `_2x.${ext}`;
+      const result = await window.electronAPI.saveFile({ serverPath: data.server_path, suggestedName: name });
+      if (result.canceled) return;
+      $('editOpenFolderBtn').classList.remove('hidden');
+      $('editOpenFolderBtn').onclick = () => window.electronAPI.openFolder(result.folderPath);
+      $('editDownloadLink').classList.add('hidden');
+      $('editDoneSub').textContent = 'Saved to ' + result.filePath;
+    } else {
+      $('editDownloadLink').href = data.download_url;
+      $('editDownloadLink').download = data.filename;
+      $('editDownloadLink').classList.remove('hidden');
+      $('editOpenFolderBtn').classList.add('hidden');
+      $('editDoneSub').textContent = 'Click to save.';
+    }
+
+    hide(editPanel);
+    show(editDoneCard);
+  } catch {
+    editErrorMsg.textContent = 'Network error.';
+    show(editErrorMsg);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Upscale 2×';
+  }
+});
+
 $('editResetBtn').addEventListener('click', () => {
   editMediaEl.pause();
   setPreviewPlaying(false);
   editFile = null;
   if (editObjectURL) { URL.revokeObjectURL(editObjectURL); editObjectURL = null; }
   editFileInput.value = '';
-  hide(editDoneCard, editPanel, editPreviewWrap, editErrorMsg);
+  hide(editDoneCard, editPanel, editPreviewWrap, $('editImgPreviewWrap'), editErrorMsg);
   show(editDropZone);
 });
 
