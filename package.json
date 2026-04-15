@@ -70,6 +70,7 @@
     },
     "dmg": {
       "title": "Palladium",
+      "background": null,
       "window": {
         "width": 540,
         "height": 380
