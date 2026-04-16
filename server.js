@@ -11,6 +11,7 @@ const { promisify } = require('util');
 const YTDlpWrap     = require('yt-dlp-wrap').default;
 const multer        = require('multer');
 const ffmpegStatic  = require('ffmpeg-static');
+const Anthropic     = require('@anthropic-ai/sdk');
 
 const execFileAsync = promisify(execFile);
 
@@ -448,27 +449,82 @@ app.post('/api/trim', upload.single('file'), async (req, res) => {
   }
 });
 
-// POST /api/upscale
+// POST /api/enhance  (quality enhancement — no resize)
 app.post('/api/upscale', upload.single('file'), async (req, res) => {
   const inputPath = req.file?.path;
   if (!inputPath) return res.status(400).json({ error: 'No file provided.' });
 
-  const ext    = path.extname(req.file.originalname).toLowerCase() || '.mp4';
+  const ext    = path.extname(req.file.originalname).toLowerCase() || '.jpg';
   const jobId  = crypto.randomBytes(12).toString('hex');
   const output = path.join(DOWNLOADS, `${jobId}${ext}`);
+  const apiKey = (req.body && req.body.claudeApiKey) || '';
+
+  // Manga/anime defaults: aggressive edge sharpening, moderate denoise, deep S-curve
+  let denoiseStr = 'hqdn3d=2:1.5:3:2.5';
+  let sharpenStr = 'unsharp=5:5:4.5:5:5:2.5';
+  // deep S-curve: crush blacks hard, blow out whites — maximum manga punch
+  let eqStr      = "curves=all='0/0 0.25/0.08 0.5/0.5 0.75/0.92 1/1'";
 
   try {
     const isImage = (req.file.mimetype || '').startsWith('image/');
+    // Use Claude Haiku to analyse the image and tune the filter parameters
+    if (apiKey && isImage) {
+      try {
+        const client = new Anthropic({ apiKey });
+        const imgData  = fs.readFileSync(inputPath);
+        const base64   = imgData.toString('base64');
+        const mimeType = req.file.mimetype;
+
+        const msg = await client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 128,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+              { type: 'text', text: 'This is a manga or anime image. Analyse its quality issues for sharpening. Reply ONLY with a JSON object — no markdown, no explanation: {"blur":0,"noise":0,"lowContrast":0,"isColor":0}. blur/noise/lowContrast are 0 (no issue) to 1 (severe). isColor is 1 if the image has significant colour, 0 if greyscale/monochrome.' },
+            ],
+          }],
+        });
+
+        const raw = msg.content[0].text.trim().replace(/^```[a-z]*\n?|\n?```$/g, '');
+        const q = JSON.parse(raw);
+
+        const blur        = Math.max(0, Math.min(1, q.blur        ?? 0));
+        const noise       = Math.max(0, Math.min(1, q.noise       ?? 0));
+        const lowContrast = Math.max(0, Math.min(1, q.lowContrast ?? 0));
+        const isColor     = q.isColor ? 1 : 0;
+
+        // Always aggressive; scale further based on analysis
+        const sharpenAmt = (3.0 + blur * 3.0).toFixed(2);  // 3.0–6.0
+        const denoiseAmt = (1.5 + noise * 3.5).toFixed(2); // 1.5–5.0
+
+        // Deep S-curve scaled by lowContrast severity (0.08–0.30 pull)
+        const pull = (0.08 + lowContrast * 0.22).toFixed(3);
+        const darkPoint  = (0.25 - +pull).toFixed(3);
+        const lightPoint = (0.75 + +pull).toFixed(3);
+
+        denoiseStr = `hqdn3d=${denoiseAmt}:${(denoiseAmt * 0.75).toFixed(2)}:${(denoiseAmt * 1.5).toFixed(2)}:${(denoiseAmt * 1.25).toFixed(2)}`;
+        sharpenStr = `unsharp=5:5:${sharpenAmt}:5:5:${(sharpenAmt * 0.45).toFixed(2)}`;
+        // stronger saturation boost for colour panels
+        const satFilter = isColor ? ',eq=saturation=1.4' : '';
+        eqStr = `curves=all='0/0 0.25/${darkPoint} 0.5/0.5 0.75/${lightPoint} 1/1'${satFilter}`;
+      } catch {
+        // Claude call failed — fall through to manga defaults
+      }
+    }
+
+    const filter = [denoiseStr, sharpenStr, eqStr].join(',');
     const args = [
       '-y', '-i', inputPath,
-      '-vf', 'scale=iw*2:ih*2:flags=lanczos',
+      '-vf', filter,
       ...(isImage ? [] : ['-c:a', 'copy']),
       output,
     ];
     await execFileAsync(FFMPEG_BIN, args, { timeout: 600_000 });
     fs.unlinkSync(inputPath);
 
-    if (!fs.existsSync(output)) return res.status(500).json({ error: 'Upscale produced no output.' });
+    if (!fs.existsSync(output)) return res.status(500).json({ error: 'Enhance produced no output.' });
 
     res.json({
       status:       'ok',
@@ -478,7 +534,7 @@ app.post('/api/upscale', upload.single('file'), async (req, res) => {
     });
   } catch (err) {
     try { fs.unlinkSync(inputPath); } catch {}
-    res.status(500).json({ error: lastLines(err.message || String(err)) || 'Upscale failed.' });
+    res.status(500).json({ error: lastLines(err.message || String(err)) || 'Enhance failed.' });
   }
 });
 
@@ -487,7 +543,7 @@ app.get('/files/:filename', (req, res) => {
   const name = path.basename(req.params.filename);
   const file = path.join(DOWNLOADS, name);
   if (!fs.existsSync(file)) return res.status(404).json({ error: 'File not found.' });
-  res.download(file, name);
+  res.sendFile(file);
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

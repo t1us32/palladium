@@ -68,6 +68,23 @@ ipcMain.handle('open-folder', (_, folderPath) => {
   shell.openPath(folderPath);
 });
 
+// Window resize — used by enhance before/after preview
+const BASE_WIN = { width: 560, height: 460 };
+
+ipcMain.handle('resize-window', (_, { width, height }) => {
+  if (!mainWindow) return;
+  const { screen } = require('electron');
+  const { workAreaSize } = screen.getPrimaryDisplay();
+  const w = Math.min(width,  workAreaSize.width  - 40);
+  const h = Math.min(height, workAreaSize.height - 60);
+  mainWindow.setSize(w, h, true); // true = animate on macOS
+});
+
+ipcMain.handle('reset-window', () => {
+  if (!mainWindow) return;
+  mainWindow.setSize(BASE_WIN.width, BASE_WIN.height, true);
+});
+
 // ── Clipboard ─────────────────────────────────────────────────────────────────
 ipcMain.handle('read-clipboard', () => clipboard.readText());
 

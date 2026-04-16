@@ -119,7 +119,7 @@ document.getElementById('clearHistoryBtn').addEventListener('click', async () =>
 });
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-let appSettings = { saveLocation: 'downloads' };
+let appSettings = { saveLocation: 'downloads', claudeApiKey: '' };
 
 async function loadSettings() {
   if (IS_ELECTRON) {
@@ -132,6 +132,9 @@ async function loadSettings() {
   document.querySelectorAll('input[name="saveLocation"]').forEach(r => {
     r.checked = r.value === appSettings.saveLocation;
   });
+  // Sync API key input
+  const keyInput = document.getElementById('claudeApiKeyInput');
+  if (keyInput) keyInput.value = appSettings.claudeApiKey || '';
 }
 
 async function saveSetting(key, value) {
@@ -197,6 +200,11 @@ settingsBtn.addEventListener('click', () => {
 // Radio changes
 document.querySelectorAll('input[name="saveLocation"]').forEach(r => {
   r.addEventListener('change', () => saveSetting('saveLocation', r.value));
+});
+
+// API key input
+document.getElementById('claudeApiKeyInput').addEventListener('input', e => {
+  saveSetting('claudeApiKey', e.target.value.trim());
 });
 
 // In web mode, hide the "ask each time" option (no native dialog available)
@@ -892,6 +900,49 @@ const editPreviewOverlay = $('editPreviewOverlay');
 const editPlayIcon = $('editPlayIcon');
 const editPauseIcon = $('editPauseIcon');
 const editDoneCard = $('editDoneCard');
+
+// ── Enhance before/after slider ───────────────────────────────────────────────
+function setEnhanceSlider(v) {
+  // v = divider position as % from left (0–100)
+  // clip left v% of after image → after visible only to the right of the divider
+  $('enhanceAfterImg').style.clipPath = `inset(0 0 0 ${v}%)`;
+  $('enhanceDivider').style.left = v + '%';
+}
+
+(function () {
+  const compare = $('enhanceCompare');
+  let dragging = false;
+
+  function applyPointer(e) {
+    const rect = compare.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    setEnhanceSlider(pct);
+  }
+
+  compare.addEventListener('pointerdown', e => {
+    dragging = true;
+    compare.setPointerCapture(e.pointerId);
+    applyPointer(e);
+  });
+  compare.addEventListener('pointermove', e => { if (dragging) applyPointer(e); });
+  compare.addEventListener('pointerup',     () => { dragging = false; });
+  compare.addEventListener('pointercancel', () => { dragging = false; });
+}());
+
+function leaveEnhancePreview() {
+  document.body.classList.remove('enhance-active');
+  if (IS_ELECTRON) window.electronAPI.resetWindow();
+  hide($('enhancePreviewWrap'));
+}
+
+$('enhanceResetBtn').addEventListener('click', () => {
+  leaveEnhancePreview();
+  editFile = null;
+  if (editObjectURL) { URL.revokeObjectURL(editObjectURL); editObjectURL = null; }
+  editFileInput.value = '';
+  hide(editDoneCard, editPanel, editPreviewWrap, $('editImgPreviewWrap'), editErrorMsg);
+  show(editDropZone);
+});
 const etWrap = $('etWrap');
 const etRegion = $('etRegion');
 const etHandleS = $('etHandleS');
@@ -1101,7 +1152,7 @@ $('editClearBtn').addEventListener('click', () => {
   editMediaEl.pause();
   setPreviewPlaying(false);
   editFile = null;
-  hide(editPanel, editDoneCard, editPreviewWrap, $('editImgPreviewWrap'));
+  hide(editPanel, editDoneCard, editPreviewWrap, $('editImgPreviewWrap'), $('enhancePreviewWrap'));
   show(editDropZone);
   editFileInput.value = '';
 });
@@ -1160,50 +1211,88 @@ $('editUpscaleBtn').addEventListener('click', async () => {
   editErrorMsg.classList.add('hidden');
   const btn = $('editUpscaleBtn');
   btn.disabled = true;
-  btn.textContent = 'Upscaling…';
+  btn.textContent = 'Enhancing…';
 
   const fd = new FormData();
   fd.append('file', editFile);
+  fd.append('claudeApiKey', appSettings.claudeApiKey || '');
 
   try {
     const res = await fetch('/api/upscale', { method: 'POST', body: fd });
     const data = await res.json();
 
     if (!res.ok) {
-      editErrorMsg.textContent = data.error || 'Upscale failed.';
+      editErrorMsg.textContent = data.error || 'Enhance failed.';
       show(editErrorMsg);
       return;
     }
 
+    // Wire up save controls on the compare card
     if (IS_ELECTRON) {
       const ext = editFile.name.split('.').pop();
-      const name = editFile.name.replace(/\.[^.]+$/, '') + `_2x.${ext}`;
-      const result = await window.electronAPI.saveFile({ serverPath: data.server_path, suggestedName: name });
-      if (result.canceled) return;
-      $('editOpenFolderBtn').classList.remove('hidden');
-      $('editOpenFolderBtn').onclick = () => window.electronAPI.openFolder(result.folderPath);
-      $('editDownloadLink').classList.add('hidden');
-      $('editDoneSub').textContent = 'Saved to ' + result.filePath;
+      const name = editFile.name.replace(/\.[^.]+$/, '') + `_enhanced.${ext}`;
+      const folderBtn = $('enhanceOpenFolderBtn');
+      folderBtn.classList.add('hidden');
+      const saveBtn = $('enhanceSaveLink');
+      saveBtn.classList.remove('hidden');
+      saveBtn.removeAttribute('href');
+      saveBtn.removeAttribute('download');
+      saveBtn.onclick = async () => {
+        const result = await window.electronAPI.saveFile({ serverPath: data.server_path, suggestedName: name });
+        if (result.canceled) return;
+        folderBtn.classList.remove('hidden');
+        folderBtn.onclick = () => window.electronAPI.openFolder(result.folderPath);
+        saveBtn.textContent = 'Saved';
+        saveBtn.classList.add('btn-ghost');
+        saveBtn.classList.remove('btn-primary');
+      };
     } else {
-      $('editDownloadLink').href = data.download_url;
-      $('editDownloadLink').download = data.filename;
-      $('editDownloadLink').classList.remove('hidden');
-      $('editOpenFolderBtn').classList.add('hidden');
-      $('editDoneSub').textContent = 'Click to save.';
+      const saveLink = $('enhanceSaveLink');
+      saveLink.href = data.download_url;
+      saveLink.download = data.filename;
+      saveLink.classList.remove('hidden');
+      saveLink.onclick = null;
+      $('enhanceOpenFolderBtn').classList.add('hidden');
     }
 
+    // Load images and show slider
+    $('enhanceBeforeImg').src = editObjectURL;
+    const afterImg = $('enhanceAfterImg');
+    afterImg.src = data.download_url;
+    setEnhanceSlider(50);
+
     hide(editPanel);
-    show(editDoneCard);
+    show($('enhancePreviewWrap'));
+
+    // Resize window to fit the image once it loads
+    afterImg.onload = () => {
+      document.body.classList.add('enhance-active');
+      if (!IS_ELECTRON) return;
+
+      // UI chrome: titlebar (~30) + body padding (~34) + header (~55)
+      //            + tabs (~44) + gaps (~20) + actions bar (~53) + bottom pad (~16)
+      const UI_CHROME = 252;
+      // Target display width — give the image 660px of content space
+      const TARGET_CONTENT_W = 660;
+      const targetWinW = TARGET_CONTENT_W + 40; // body left+right padding
+
+      const aspect = afterImg.naturalHeight / afterImg.naturalWidth;
+      const imgDisplayH = Math.min(480, Math.round(TARGET_CONTENT_W * aspect));
+      const targetWinH  = imgDisplayH + UI_CHROME;
+
+      window.electronAPI.resizeWindow(targetWinW, targetWinH);
+    };
   } catch {
     editErrorMsg.textContent = 'Network error.';
     show(editErrorMsg);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Upscale 2×';
+    btn.textContent = 'Enhance';
   }
 });
 
 $('editResetBtn').addEventListener('click', () => {
+  leaveEnhancePreview();
   editMediaEl.pause();
   setPreviewPlaying(false);
   editFile = null;

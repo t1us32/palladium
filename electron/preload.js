@@ -24,4 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getHistory:    ()      => ipcRenderer.invoke('get-history'),
   addHistory:    (entry) => ipcRenderer.invoke('add-history', entry),
   clearHistory:  ()      => ipcRenderer.invoke('clear-history'),
+
+  // Window resize (enhance preview)
+  resizeWindow: (w, h) => ipcRenderer.invoke('resize-window', { width: w, height: h }),
+  resetWindow:  ()     => ipcRenderer.invoke('reset-window'),
 });

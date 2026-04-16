@@ -346,10 +346,9 @@
           <button id="editUpscaleBtn" class="btn-ghost hidden">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
-              <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
             </svg>
-            Upscale 2×
+            Enhance
           </button>
         </div>
 
@@ -384,6 +383,42 @@
               Trim another
             </button>
           </div>
+        </div>
+      </div>
+
+      <!-- Enhance before/after preview -->
+      <div id="enhancePreviewWrap" class="enhance-wrap hidden">
+        <div class="enhance-compare" id="enhanceCompare">
+          <img id="enhanceBeforeImg" class="enhance-before-img" alt="Before" draggable="false" />
+          <img id="enhanceAfterImg" class="enhance-after-img" alt="After" draggable="false" />
+          <div class="enhance-divider" id="enhanceDivider">
+            <div class="enhance-handle" id="enhanceHandle">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6" transform="translate(-2,0)"/>
+                <polyline points="9 6 15 12 9 18" transform="translate(2,0)"/>
+              </svg>
+            </div>
+          </div>
+          <span class="enhance-label enhance-label-l">Before</span>
+          <span class="enhance-label enhance-label-r">After</span>
+        </div>
+        <div class="enhance-actions">
+          <a id="enhanceSaveLink" class="btn-primary" href="#" download>Save file</a>
+          <button id="enhanceOpenFolderBtn" class="btn-ghost hidden">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+            Open folder
+          </button>
+          <button id="enhanceResetBtn" class="btn-ghost">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/>
+            </svg>
+            Enhance another
+          </button>
         </div>
       </div>
 
@@ -442,6 +477,14 @@
               <span class="radio-sub">Opens a save dialog after every download</span>
             </span>
           </label>
+        </div>
+        <div class="dropdown-section">
+          <p class="dropdown-heading">Claude API key</p>
+          <div style="padding: 4px 14px 10px;">
+            <input type="password" id="claudeApiKeyInput" class="filename-input"
+              placeholder="sk-ant-api03-…" autocomplete="off" spellcheck="false" />
+            <p class="radio-sub" style="margin-top:5px;">Used by the Enhance button to analyse image quality</p>
+          </div>
         </div>
       </div>
     </div>
