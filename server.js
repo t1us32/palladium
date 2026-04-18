@@ -11,6 +11,10 @@ const { promisify } = require('util');
 const YTDlpWrap     = require('yt-dlp-wrap').default;
 const multer        = require('multer');
 const ffmpegStatic  = require('ffmpeg-static');
+const archiver      = require('archiver');
+
+// ── Download jobs (for SSE streaming) ────────────────────────────────────────
+const jobs = new Map(); // jobId → { events[], clients Set, done bool }
 
 const execFileAsync = promisify(execFile);
 
@@ -148,6 +152,196 @@ async function spotifyDownload(url, jobId) {
   return findOutput(jobId);
 }
 
+// ── Spotify collection helpers (playlists + albums) ──────────────────────────
+function isSpotifyCollection(url) {
+  return /open\.spotify\.com\/(playlist|album)\//i.test(url);
+}
+
+function isSpotifyAlbum(url) {
+  return /open\.spotify\.com\/album\//i.test(url);
+}
+
+// ── Spotify embed scraper (no credentials, no rate limits) ───────────────────
+function extractSpotifyId(url) {
+  const m = url.match(/open\.spotify\.com\/(album|playlist)\/([A-Za-z0-9]+)/);
+  return m ? { type: m[1], id: m[2] } : null;
+}
+
+function httpsGet(url) {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    }, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return resolve(httpsGet(res.headers.location));
+      }
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end',  () => resolve({ status: res.statusCode, text: body }));
+    });
+    req.setTimeout(12_000, () => { req.destroy(); reject(new Error('Request timed out')); });
+    req.on('error', reject);
+  });
+}
+
+async function spotifyEmbedInfo(url, collectionType) {
+  const parsed = extractSpotifyId(url);
+  if (!parsed) throw new Error('Cannot parse Spotify URL.');
+
+  const { status, text } = await httpsGet(
+    `https://open.spotify.com/embed/${parsed.type}/${parsed.id}`
+  );
+  if (status !== 200) throw new Error(`Spotify embed HTTP ${status}`);
+
+  const m = text.match(/<script id="__NEXT_DATA__"[^>]*>([^<]+)<\/script>/);
+  if (!m) throw new Error('__NEXT_DATA__ not found in embed page.');
+
+  const entity = JSON.parse(m[1])?.props?.pageProps?.state?.data?.entity;
+  if (!entity) throw new Error('Entity not found in __NEXT_DATA__.');
+
+  const title = entity.name || entity.title ||
+    (collectionType === 'album' ? 'Spotify Album' : 'Spotify Playlist');
+
+  // Largest image is last in the array
+  const images = entity.visualIdentity?.image || entity.coverArt?.sources || entity.images || [];
+  const thumbnail = images.length ? images.at(-1).url : null;
+
+  // Tracks are in entity.trackList; each has .title and .subtitle (artist)
+  const tracks = (entity.trackList || entity.tracks?.items || [])
+    .map(item => {
+      const t = item.track || item;
+      const trackTitle  = t.title || t.name;
+      const trackArtist = t.subtitle || '';
+      if (!trackTitle) return null;
+      return { title: trackTitle, artist: trackArtist };
+    })
+    .filter(Boolean);
+
+  if (tracks.length === 0) throw new Error('No tracks found in embed data.');
+
+  return {
+    title, trackCount: tracks.length, tracks, thumbnail,
+    isPlaylist: true, collectionType, duration: null,
+    uploader: entity.subtitle || entity.artists?.[0]?.profile?.name || null,
+  };
+}
+
+async function spotifyCollectionInfo(url, creds = {}) {
+  const collectionType = isSpotifyAlbum(url) ? 'album' : 'playlist';
+
+  // Primary: scrape the public embed page — no credentials, no rate limits
+  try {
+    return await spotifyEmbedInfo(url, collectionType);
+  } catch (embedErr) {
+    console.log('[spotify] embed scrape failed:', embedErr.message, '— trying spotdl save');
+  }
+
+  // Fallback: spotdl save (needs credentials when rate limited)
+  const tmpFile = path.join(os.tmpdir(), `palladium-${crypto.randomBytes(6).toString('hex')}.spotdl`);
+  try {
+    const args = ['save', url, '--save-file', tmpFile];
+    if (creds.clientId)     args.push('--client-id',     creds.clientId);
+    if (creds.clientSecret) args.push('--client-secret', creds.clientSecret);
+    const { stderr } = await execFileAsync('spotdl', args, { timeout: 30_000 });
+    if (/rate.*limit|retry.*after/i.test(stderr || '')) throw new Error('RATE_LIMIT');
+    const data = JSON.parse(fs.readFileSync(tmpFile, 'utf8'));
+    if (!Array.isArray(data) || data.length === 0) throw new Error('No tracks found.');
+    const tracks = data.map(s => ({
+      title:  s.name   || 'Unknown',
+      artist: Array.isArray(s.artists) ? s.artists.join(', ') : (s.artist || ''),
+    }));
+    return {
+      title: collectionType === 'album' ? (data[0].album_name || 'Spotify Album') : (data[0].list_name || 'Spotify Playlist'),
+      trackCount: tracks.length, tracks,
+      thumbnail: data[0].cover_url || null,
+      isPlaylist: true, collectionType, duration: null, uploader: null,
+    };
+  } catch (err) {
+    const msg = String(err.message || err);
+    if (msg === 'RATE_LIMIT' || /rate.*limit|retry.*after/i.test(msg)) {
+      throw new Error(
+        creds.clientId
+          ? 'Spotify rate limit reached even with custom credentials. Try again later.'
+          : 'Spotify rate limit — embed scrape also failed. Add Spotify API credentials in Settings.'
+      );
+    }
+    throw err;
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch {}
+  }
+}
+
+function createZip(sourceDir, destPath) {
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(destPath);
+    const arc = archiver('zip', { zlib: { level: 0 } });
+    output.on('close', resolve);
+    arc.on('error', reject);
+    arc.pipe(output);
+    arc.directory(sourceDir, false);
+    arc.finalize();
+  });
+}
+
+function sanitizeFilename(s) {
+  return s.replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim();
+}
+
+async function fixMp3Tags(filePath, title, artist) {
+  const tmp = filePath + '.tmp.mp3';
+  try {
+    await execFileAsync(FFMPEG_BIN, [
+      '-y', '-i', filePath,
+      '-metadata', `title=${title}`,
+      '-metadata', `artist=${artist}`,
+      '-c:a', 'copy',
+      tmp,
+    ], { timeout: 30_000 });
+    fs.renameSync(tmp, filePath);
+  } catch {
+    try { fs.unlinkSync(tmp); } catch {}
+  }
+}
+
+async function spotifyCollectionDownload(url, jobId, tracks = [], emit = () => {}) {
+  const collectionDir = path.join(DOWNLOADS, jobId);
+  fs.mkdirSync(collectionDir, { recursive: true });
+
+  if (tracks.length === 0) throw new Error('No tracks found — fetch the URL first to load the track list.');
+
+  let doneCount = 0;
+  for (let i = 0; i < tracks.length; i++) {
+    const t = tracks[i];
+    const query = [t.artist, t.title].filter(Boolean).join(' - ');
+    emit('track', { index: i, status: 'searching', title: t.title, artist: t.artist, total: tracks.length });
+    const prefix = String(i + 1).padStart(2, '0');
+    const base   = sanitizeFilename([t.artist, t.title].filter(Boolean).join(' - '));
+    const outTpl = path.join(collectionDir, `${prefix} ${base}.%(ext)s`);
+    try {
+      await ytDlp.execPromise([
+        `ytsearch1:${query}`,
+        '--extract-audio', '--audio-format', 'mp3', '--audio-quality', '0',
+        '--no-playlist', '-o', outTpl,
+      ]);
+      const mp3Path = path.join(collectionDir, `${prefix} ${base}.mp3`);
+      if (fs.existsSync(mp3Path)) await fixMp3Tags(mp3Path, t.title, t.artist);
+      doneCount++;
+      emit('track', { index: i, status: 'done', title: t.title, artist: t.artist, done: doneCount, total: tracks.length });
+    } catch {
+      emit('track', { index: i, status: 'failed', title: t.title, artist: t.artist, done: doneCount, total: tracks.length });
+    }
+  }
+
+  emit('log', { message: 'Creating archive…' });
+  const zipPath = path.join(DOWNLOADS, `${jobId}.zip`);
+  await createZip(collectionDir, zipPath);
+  return { dir: collectionDir, zipPath };
+}
+
 // ── yt-dlp download helpers ───────────────────────────────────────────────────
 // quality for video: 'best' | '2160' | '1080' | '720' | '480' | '360'
 // quality for audio: 'best' | '320K' | '192K' | '128K'
@@ -183,7 +377,7 @@ app.get('/api/platforms', (_req, res) => {
 
 // POST /api/info
 app.post('/api/info', async (req, res) => {
-  const { url } = req.body || {};
+  const { url, spotifyCredentials: creds = {} } = req.body || {};
   if (!url || !isValidUrl(url)) return res.status(400).json({ error: 'Enter a valid URL.' });
 
   const platform = detectPlatform(url);
@@ -191,7 +385,7 @@ app.post('/api/info', async (req, res) => {
   try {
     let info;
     if (platform.id === 'spotify') {
-      info = await spotifyInfo(url);
+      info = isSpotifyCollection(url) ? await spotifyCollectionInfo(url, creds) : await spotifyInfo(url);
     } else {
       const raw  = await ytDlp.execPromise([url, '--dump-json', '--no-playlist']);
       const data = JSON.parse(raw);
@@ -208,6 +402,62 @@ app.post('/api/info', async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: lastLines(err.message || String(err)) || 'Could not fetch info.' });
   }
+});
+
+// POST /api/start-download  — creates a streaming job for collections
+app.post('/api/start-download', (req, res) => {
+  const { url, tracks = [], spotifyCredentials: creds = {} } = req.body || {};
+  if (!url || !isValidUrl(url)) return res.status(400).json({ error: 'Enter a valid URL.' });
+  if (!isSpotifyCollection(url))  return res.status(400).json({ error: 'Not a collection URL.' });
+
+  const jobId = crypto.randomBytes(12).toString('hex');
+  const job = { events: [], clients: new Set(), done: false };
+  jobs.set(jobId, job);
+
+  function emit(event, data) {
+    const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    job.events.push(msg);
+    job.clients.forEach(c => { try { c.write(msg); } catch {} });
+  }
+
+  (async () => {
+    try {
+      const result = await spotifyCollectionDownload(url, jobId, Array.isArray(tracks) ? tracks : [], emit);
+      emit('done', {
+        status: 'ok', isPlaylist: true,
+        filename: `${jobId}.zip`,
+        download_url: `/files/${jobId}.zip`,
+        server_path: result.zipPath,
+        dir_path: result.dir,
+      });
+    } catch (err) {
+      emit('fail', { error: lastLines(err.message || String(err)) || 'Download failed.' });
+    } finally {
+      job.done = true;
+      job.clients.forEach(c => { try { c.end(); } catch {} });
+      setTimeout(() => jobs.delete(jobId), 60_000);
+    }
+  })();
+
+  res.json({ jobId });
+});
+
+// GET /api/download-events/:jobId  — SSE stream for a collection job
+app.get('/api/download-events/:jobId', (req, res) => {
+  const job = jobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found.' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  // Replay buffered events (handles reconnect / race with fast tracks)
+  job.events.forEach(msg => res.write(msg));
+  if (job.done) { res.end(); return; }
+
+  job.clients.add(res);
+  req.on('close', () => job.clients.delete(res));
 });
 
 // POST /api/download

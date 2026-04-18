@@ -29,6 +29,9 @@ const historyEmpty = $('historyEmpty');
 const filenameInput = $('filenameInput');
 const recentSection = $('recentSection');
 const recentList = $('recentList');
+const trackListEl = $('trackList');
+const thumbCol = $('thumbCol');
+const downloadLog = $('downloadLog');
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const IS_ELECTRON = typeof window.electronAPI !== 'undefined';
@@ -37,6 +40,9 @@ let selectedQuality = 'best';
 let lastSavedFolder = null;
 let videoTitle = '';
 let currentPlatform = null;
+let isPlaylist = false;
+let playlistTrackCount = 0;
+let currentTracks = [];
 
 // Quality presets per format
 const QUALITY_PRESETS = {
@@ -80,6 +86,30 @@ function fmtDuration(sec) {
     : `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function spotifyCredentials() {
+  const id  = appSettings.spotifyClientId     || '';
+  const sec = appSettings.spotifyClientSecret || '';
+  return id && sec ? { clientId: id, clientSecret: sec } : {};
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderTrackList(tracks) {
+  if (!tracks || tracks.length === 0) { hide(trackListEl); return; }
+  trackListEl.innerHTML = tracks.map((t, i) => `
+    <div class="track-item">
+      <span class="track-num">${i + 1}</span>
+      <span class="track-info">
+        <span class="track-title">${escHtml(t.title)}</span>
+        ${t.artist ? `<span class="track-artist">${escHtml(t.artist)}</span>` : ''}
+      </span>
+    </div>
+  `).join('');
+  show(trackListEl);
+}
+
 function closeAllModals() {
   settingsMenu.classList.add('hidden');
   qualityMenu.classList.add('hidden');
@@ -114,7 +144,7 @@ document.getElementById('clearHistoryBtn').addEventListener('click', async () =>
 });
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-let appSettings = { saveLocation: 'downloads' };
+let appSettings = { saveLocation: 'downloads', spotifyClientId: '', spotifyClientSecret: '' };
 
 async function loadSettings() {
   if (IS_ELECTRON) {
@@ -123,10 +153,11 @@ async function loadSettings() {
     try { appSettings = { ...appSettings, ...JSON.parse(localStorage.getItem('palladium-settings') || '{}') }; }
     catch { }
   }
-  // Sync radio buttons to loaded state
   document.querySelectorAll('input[name="saveLocation"]').forEach(r => {
     r.checked = r.value === appSettings.saveLocation;
   });
+  $('spotifyClientId').value     = appSettings.spotifyClientId     || '';
+  $('spotifyClientSecret').value = appSettings.spotifyClientSecret || '';
 }
 
 async function saveSetting(key, value) {
@@ -189,9 +220,12 @@ settingsBtn.addEventListener('click', () => {
   settingsMenu.classList.toggle('hidden');
 });
 
-// Radio changes
 document.querySelectorAll('input[name="saveLocation"]').forEach(r => {
   r.addEventListener('change', () => saveSetting('saveLocation', r.value));
+});
+
+['spotifyClientId', 'spotifyClientSecret'].forEach(id => {
+  $( id).addEventListener('change', e => saveSetting(id, e.target.value.trim()));
 });
 
 // In web mode, hide the "ask each time" option (no native dialog available)
@@ -427,7 +461,7 @@ async function fetchInfo() {
     const res = await fetch('/api/info', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, spotifyCredentials: spotifyCredentials() }),
     });
     const data = await res.json();
 
@@ -435,34 +469,71 @@ async function fetchInfo() {
 
     videoTitle = data.title || 'download';
     currentPlatform = data.platform ? data.platform.label : null;
+    isPlaylist = !!data.isPlaylist;
+    playlistTrackCount = data.trackCount || 0;
 
-    // Filename input — pre-fill with sanitized title
-    filenameInput.value = videoTitle.replace(/[^\w\s.\-()]/g, '').trim();
-    show(filenameInput);
+    if (isPlaylist) {
+      currentTracks = data.tracks || [];
 
-    // Platform-specific format handling
-    if (data.platform) {
-      const audioOnly = ['spotify', 'soundcloud'].includes(data.platform.id);
-      formatToggle.querySelector('[data-fmt="video"]').style.display = audioOnly ? 'none' : '';
-      setFormat(data.platform.defaultFormat || 'video');
-      $('qualityMenuHeading').textContent = selectedFormat === 'audio' ? 'Audio quality' : 'Video quality';
+      // Thumbnail: show album art if available, otherwise hide the thumb column
+      const thumb = $('thumbnail');
+      if (data.thumbnail) {
+        thumb.src = data.thumbnail;
+        thumb.style.display = '';
+        show(thumbCol);
+      } else {
+        hide(thumbCol);
+      }
+      hide($('duration'));
+
+      formatToggle.style.display = 'none';
+      qualityBtn.closest('.quality-anchor').style.display = 'none';
+      hide(filenameInput);
+
+      $('videoTitle').textContent = data.title || (data.collectionType === 'album' ? 'Spotify Album' : 'Spotify Playlist');
+      const up = $('uploaderName');
+      up.textContent = playlistTrackCount ? `${playlistTrackCount} tracks` : (data.collectionType || 'Playlist');
+      show(up);
+
+      $('downloadBtnText').textContent = data.collectionType === 'album' ? 'Download Album' : 'Download Playlist';
+
+      renderTrackList(currentTracks);
+    } else {
+      currentTracks = [];
+      hide(trackListEl);
+      show(thumbCol);
+      formatToggle.style.display = '';
+      qualityBtn.closest('.quality-anchor').style.display = '';
+      $('downloadBtnText').textContent = 'Download';
+
+      // Filename input — pre-fill with sanitized title
+      filenameInput.value = videoTitle.replace(/[^\w\s.\-()]/g, '').trim();
+      show(filenameInput);
+
+      // Platform-specific format handling
+      if (data.platform) {
+        const audioOnly = ['spotify', 'soundcloud'].includes(data.platform.id);
+        formatToggle.querySelector('[data-fmt="video"]').style.display = audioOnly ? 'none' : '';
+        setFormat(data.platform.defaultFormat || 'video');
+        $('qualityMenuHeading').textContent = selectedFormat === 'audio' ? 'Audio quality' : 'Video quality';
+      }
+
+      // Thumbnail
+      const thumb = $('thumbnail');
+      thumb.src = data.thumbnail || '';
+      thumb.style.display = data.thumbnail ? '' : 'none';
+
+      // Duration
+      const durText = fmtDuration(data.duration);
+      if (durText) { $('duration').textContent = durText; show($('duration')); }
+      else { hide($('duration')); }
+
+      // Title & uploader
+      $('videoTitle').textContent = data.title || 'Untitled';
+      const up = $('uploaderName');
+      if (data.uploader) { up.textContent = `@${data.uploader}`; show(up); }
+      else { hide(up); }
     }
-
-    // Thumbnail
-    const thumb = $('thumbnail');
-    thumb.src = data.thumbnail || '';
-    thumb.style.display = data.thumbnail ? '' : 'none';
-
-    // Duration
-    const durText = fmtDuration(data.duration);
-    if (durText) { $('duration').textContent = durText; show($('duration')); }
-    else { hide($('duration')); }
-
-    // Title & uploader
-    $('videoTitle').textContent = data.title || 'Untitled';
-    const up = $('uploaderName');
-    if (data.uploader) { up.textContent = `@${data.uploader}`; show(up); }
-    else { hide(up); }
 
     show(previewCard);
   } catch {
@@ -479,10 +550,16 @@ downloadBtn.addEventListener('click', startDownload);
 async function startDownload() {
   const url = urlInput.value.trim();
   if (!url) return;
-
   closeAllModals();
   hide(previewCard, recentSection);
+
+  if (isPlaylist) {
+    await startCollectionDownload(url);
+    return;
+  }
+
   progressLabel.textContent = selectedFormat === 'audio' ? 'Downloading audio…' : 'Downloading video…';
+  hide(downloadLog);
   show(progressCard);
 
   try {
@@ -492,18 +569,10 @@ async function startDownload() {
       body: JSON.stringify({ url, format: selectedFormat, quality: selectedQuality }),
     });
     const data = await res.json();
-
-    if (!res.ok) {
-      hide(progressCard);
-      show(previewCard);
-      showError(data.error || 'Download failed.');
-      return;
-    }
-
+    if (!res.ok) { hide(progressCard); show(previewCard); showError(data.error || 'Download failed.'); return; }
     hide(progressCard);
     await handleSave(data);
     show(doneCard);
-
   } catch {
     hide(progressCard);
     show(previewCard);
@@ -511,7 +580,132 @@ async function startDownload() {
   }
 }
 
+// ── SVG icons for log rows ────────────────────────────────────────────────────
+const SPIN_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>`;
+const CHECK_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+const CROSS_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+
+function upsertLogRow(index, status, title, artist) {
+  const id = `log-row-${index}`;
+  let row = document.getElementById(id);
+  if (!row) {
+    row = document.createElement('div');
+    row.id = id;
+    row.className = 'log-row';
+    downloadLog.appendChild(row);
+  }
+  const iconClass = status === 'done' ? 'done' : status === 'failed' ? 'failed' : 'searching';
+  const icon = status === 'done' ? CHECK_ICON : status === 'failed' ? CROSS_ICON : SPIN_ICON;
+  row.innerHTML = `
+    <div class="log-icon ${iconClass}">${icon}</div>
+    <div class="log-text">
+      <div class="log-title">${escHtml(title)}</div>
+      ${artist ? `<div class="log-artist">${escHtml(artist)}</div>` : ''}
+    </div>`;
+  // Auto-scroll to newest active row
+  if (status === 'searching') row.scrollIntoView({ block: 'nearest' });
+}
+
+function appendLogMsg(message) {
+  const row = document.createElement('div');
+  row.className = 'log-row';
+  row.innerHTML = `<div class="log-icon"></div><div class="log-text"><div class="log-msg">${escHtml(message)}</div></div>`;
+  downloadLog.appendChild(row);
+  row.scrollIntoView({ block: 'nearest' });
+}
+
+async function startCollectionDownload(url) {
+  progressLabel.textContent = `Starting download…`;
+  downloadLog.innerHTML = '';
+  show(downloadLog);
+  show(progressCard);
+
+  let jobId;
+  try {
+    const r = await fetch('/api/start-download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, tracks: currentTracks, spotifyCredentials: spotifyCredentials() }),
+    });
+    const j = await r.json();
+    if (!r.ok || j.error) { hide(progressCard); show(previewCard); showError(j.error || 'Failed to start.'); return; }
+    jobId = j.jobId;
+  } catch {
+    hide(progressCard); show(previewCard); showError('Network error.'); return;
+  }
+
+  await new Promise(resolve => {
+    const es = new EventSource(`/api/download-events/${jobId}`);
+
+    es.addEventListener('track', e => {
+      const d = JSON.parse(e.data);
+      upsertLogRow(d.index, d.status, d.title, d.artist);
+      if (d.done != null) {
+        progressLabel.textContent = `Downloaded ${d.done} / ${d.total}`;
+      } else {
+        progressLabel.textContent = `Downloading track ${d.index + 1} of ${d.total}…`;
+      }
+    });
+
+    es.addEventListener('log', e => {
+      const d = JSON.parse(e.data);
+      appendLogMsg(d.message);
+      progressLabel.textContent = d.message;
+    });
+
+    es.addEventListener('done', async e => {
+      es.close();
+      hide(progressCard);
+      await handleSave(JSON.parse(e.data));
+      show(doneCard);
+      resolve();
+    });
+
+    es.addEventListener('fail', e => {
+      es.close();
+      hide(progressCard);
+      show(previewCard);
+      showError(JSON.parse(e.data).error || 'Download failed.');
+      resolve();
+    });
+
+    es.onerror = () => {
+      if (es.readyState === EventSource.CLOSED) {
+        es.close(); hide(progressCard); show(previewCard);
+        showError('Connection lost during download.');
+        resolve();
+      }
+    };
+  });
+}
+
 async function handleSave(data) {
+  if (data.isPlaylist) {
+    if (IS_ELECTRON) {
+      lastSavedFolder = data.dir_path;
+      show(openFolderBtn);
+      hide(downloadLink);
+      $('doneSub').textContent = playlistTrackCount
+        ? `${playlistTrackCount} tracks saved to Downloads.`
+        : 'Playlist saved to Downloads.';
+    } else {
+      downloadLink.href = data.download_url;
+      downloadLink.download = data.filename;
+      show(downloadLink);
+      hide(openFolderBtn);
+      $('doneSub').textContent = 'Click to download ZIP.';
+    }
+    await addHistoryEntry({
+      title: videoTitle,
+      platform: currentPlatform,
+      format: 'audio',
+      savedAt: Date.now(),
+      folderPath: IS_ELECTRON ? data.dir_path : null,
+    });
+    refreshRecent();
+    return;
+  }
+
   // In Electron: use native save flow
   if (IS_ELECTRON) {
     const ext = data.filename.split('.').pop();
@@ -852,8 +1046,17 @@ resetBtn.addEventListener('click', () => {
   lastSavedFolder = null;
   videoTitle = '';
   filenameInput.value = '';
+  isPlaylist = false;
+  playlistTrackCount = 0;
+  currentTracks = [];
+  hide(trackListEl);
+  show(thumbCol);
+  formatToggle.style.display = '';
+  qualityBtn.closest('.quality-anchor').style.display = '';
+  $('downloadBtnText').textContent = 'Download';
   clearError();
-  hide(previewCard, progressCard, doneCard, openFolderBtn, filenameInput);
+  downloadLog.innerHTML = '';
+  hide(previewCard, progressCard, doneCard, openFolderBtn, filenameInput, downloadLog);
   show(downloadLink); // restore for web mode
   refreshRecent();
   urlInput.focus();

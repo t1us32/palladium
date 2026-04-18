@@ -91,7 +91,7 @@
     <section id="previewCard" class="card preview-card hidden">
       <div class="preview-layout">
 
-        <div class="thumb-col">
+        <div id="thumbCol" class="thumb-col">
           <div class="thumb-wrap">
             <img id="thumbnail" src="" alt="" />
             <span id="duration" class="duration-pill hidden"></span>
@@ -147,17 +147,22 @@
               <polyline points="7 10 12 15 17 10"/>
               <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            Download
+            <span id="downloadBtnText">Download</span>
           </button>
         </div>
 
       </div>
+
+      <!-- Track list for playlists / albums -->
+      <div id="trackList" class="track-list hidden"></div>
+
     </section>
 
     <!-- ── Progress ── -->
     <section id="progressCard" class="card progress-card hidden">
       <p id="progressLabel" class="progress-label">Downloading…</p>
       <div class="track"><div class="fill indeterminate"></div></div>
+      <div id="downloadLog" class="download-log hidden"></div>
     </section>
 
     <!-- ── Done ── -->
@@ -370,6 +375,25 @@
         </button>
       </div>
       <div class="modal-body">
+        <div class="dropdown-section">
+          <p class="dropdown-heading">Spotify API credentials</p>
+          <div class="cred-row">
+            <label class="cred-label" for="spotifyClientId">Client ID</label>
+            <input id="spotifyClientId" class="cred-input" type="text"
+              placeholder="Paste your client ID…" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="cred-row">
+            <label class="cred-label" for="spotifyClientSecret">Client Secret</label>
+            <input id="spotifyClientSecret" class="cred-input" type="password"
+              placeholder="Paste your client secret…" autocomplete="off" />
+          </div>
+          <p class="cred-hint">
+            Prevents rate limits. Free at
+            <a class="cred-link" href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com</a>
+            — create an app, copy the ID &amp; secret.
+          </p>
+        </div>
+        <div class="modal-divider"></div>
         <div class="dropdown-section">
           <p class="dropdown-heading">Save location</p>
           <label class="radio-row">
