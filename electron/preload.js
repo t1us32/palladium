@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open the folder that contains the saved file in the OS file manager
   openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
 
+  // Open a URL in the default browser / registered protocol handler
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
   // Persistent settings (saved to userData)
   getSettings: ()  => ipcRenderer.invoke('get-settings'),
   setSettings: (s) => ipcRenderer.invoke('set-settings', s),

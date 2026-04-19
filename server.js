@@ -74,6 +74,7 @@ async function initYtDlp() {
 
 // ── Platform detection ────────────────────────────────────────────────────────
 const PLATFORMS = [
+  { id: 'youtubemusic', pattern: /music\.youtube\.com/i,                  label: 'YouTube Music', color: '#ff0000', defaultFormat: 'audio' },
   { id: 'youtube',     pattern: /youtube\.com|youtu\.be/i,               label: 'YouTube',     color: '#ff0000', defaultFormat: 'video' },
   { id: 'spotify',     pattern: /open\.spotify\.com|spotify\.com/i,      label: 'Spotify',     color: '#1db954', defaultFormat: 'audio' },
   { id: 'soundcloud',  pattern: /soundcloud\.com/i,                       label: 'SoundCloud',  color: '#ff5500', defaultFormat: 'audio' },
@@ -152,13 +153,26 @@ async function spotifyDownload(url, jobId) {
   return findOutput(jobId);
 }
 
-// ── Spotify collection helpers (playlists + albums) ──────────────────────────
+// ── Collection detection ──────────────────────────────────────────────────────
 function isSpotifyCollection(url) {
   return /open\.spotify\.com\/(playlist|album)\//i.test(url);
 }
 
 function isSpotifyAlbum(url) {
   return /open\.spotify\.com\/album\//i.test(url);
+}
+
+function isYouTubeCollection(url) {
+  return /(?:youtube\.com|music\.youtube\.com)\/playlist\?/i.test(url) ||
+         /music\.youtube\.com\/browse\//i.test(url);
+}
+
+function isSoundCloudCollection(url) {
+  return /soundcloud\.com\/.+\/sets\//i.test(url);
+}
+
+function isAnyCollection(url) {
+  return isSpotifyCollection(url) || isYouTubeCollection(url) || isSoundCloudCollection(url);
 }
 
 // ── Spotify embed scraper (no credentials, no rate limits) ───────────────────
@@ -342,6 +356,121 @@ async function spotifyCollectionDownload(url, jobId, tracks = [], emit = () => {
   return { dir: collectionDir, zipPath };
 }
 
+// ── YouTube / SoundCloud collection helpers ───────────────────────────────────
+async function ytdlpCollectionInfo(url) {
+  const raw = await ytDlp.execPromise([
+    url,
+    '--dump-single-json',
+    '--yes-playlist',
+    '--flat-playlist',
+  ]);
+  const data = JSON.parse(raw);
+  const entries = (data.entries || []).filter(Boolean);
+  const tracks = entries.map(e => {
+    const videoUrl = e.url?.startsWith('http')
+      ? e.url
+      : (e.webpage_url || (e.id ? `https://www.youtube.com/watch?v=${e.id}` : null));
+    return {
+      title:  e.title || e.id || 'Unknown',
+      artist: e.uploader || e.channel || e.artist || '',
+      url:    videoUrl || null,
+    };
+  }).filter(t => t.title);
+
+  const collectionType = url.includes('/browse/') ? 'album' : 'playlist';
+  const thumbnail = data.thumbnail || data.thumbnails?.at?.(-1)?.url || null;
+
+  return {
+    title:         data.title || 'Playlist',
+    uploader:      data.uploader || data.channel || null,
+    thumbnail,
+    duration:      null,
+    trackCount:    tracks.length,
+    tracks,
+    isPlaylist:    true,
+    collectionType,
+    view_count:    null,
+    like_count:    null,
+  };
+}
+
+async function ytdlpCollectionDownload(url, jobId, tracks = [], emit = () => {}) {
+  const collectionDir = path.join(DOWNLOADS, jobId);
+  fs.mkdirSync(collectionDir, { recursive: true });
+
+  if (tracks.length === 0) throw new Error('No tracks found — fetch the URL first.');
+
+  let doneCount = 0;
+  for (let i = 0; i < tracks.length; i++) {
+    const t = tracks[i];
+    const source = t.url || `ytsearch1:${[t.artist, t.title].filter(Boolean).join(' ')}`;
+    emit('track', { index: i, status: 'searching', title: t.title, artist: t.artist, total: tracks.length });
+
+    const prefix = String(i + 1).padStart(2, '0');
+    const base   = sanitizeFilename([t.artist, t.title].filter(Boolean).join(' - ') || `track-${i + 1}`);
+    const outTpl = path.join(collectionDir, `${prefix} ${base}.%(ext)s`);
+
+    try {
+      await ytDlp.execPromise([
+        source,
+        '--extract-audio', '--audio-format', 'mp3', '--audio-quality', '0',
+        '--no-playlist', '-o', outTpl,
+      ]);
+      const mp3Path = path.join(collectionDir, `${prefix} ${base}.mp3`);
+      if (fs.existsSync(mp3Path)) await fixMp3Tags(mp3Path, t.title, t.artist);
+      doneCount++;
+      emit('track', { index: i, status: 'done', title: t.title, artist: t.artist, done: doneCount, total: tracks.length });
+    } catch {
+      emit('track', { index: i, status: 'failed', title: t.title, artist: t.artist, done: doneCount, total: tracks.length });
+    }
+  }
+
+  emit('log', { message: 'Creating archive…' });
+  const zipPath = path.join(DOWNLOADS, `${jobId}.zip`);
+  await createZip(collectionDir, zipPath);
+  return { dir: collectionDir, zipPath };
+}
+
+// ── Spotify session auto-detect ───────────────────────────────────────────────
+async function detectSpotifySession() {
+  const home = os.homedir();
+  const platform = os.platform();
+
+  const searchDirs = [];
+  if (platform === 'linux') {
+    searchDirs.push(
+      path.join(home, '.config/spotify/Users'),
+      path.join(home, '.var/app/com.spotify.Client/config/spotify/Users'),
+    );
+  } else if (platform === 'darwin') {
+    searchDirs.push(path.join(home, 'Library/Application Support/Spotify/Users'));
+  } else if (platform === 'win32') {
+    const appData = process.env.APPDATA || path.join(home, 'AppData/Roaming');
+    searchDirs.push(path.join(appData, 'Spotify/Users'));
+  }
+
+  for (const dir of searchDirs) {
+    if (!fs.existsSync(dir)) continue;
+    try {
+      const users = fs.readdirSync(dir);
+      for (const user of users) {
+        const credFile = path.join(dir, user, 'credentials.json');
+        if (fs.existsSync(credFile)) {
+          try {
+            const cred = JSON.parse(fs.readFileSync(credFile, 'utf8'));
+            const username = cred.username || user.replace(/-user$/, '');
+            return { found: true, username, hasToken: !!(cred.auth_token || cred.access_token) };
+          } catch {
+            return { found: true, username: user.replace(/-user$/, ''), hasToken: false };
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return { found: false, username: null, hasToken: false };
+}
+
 // ── yt-dlp download helpers ───────────────────────────────────────────────────
 // quality for video: 'best' | '2160' | '1080' | '720' | '480' | '360'
 // quality for audio: 'best' | '320K' | '192K' | '128K'
@@ -386,6 +515,8 @@ app.post('/api/info', async (req, res) => {
     let info;
     if (platform.id === 'spotify') {
       info = isSpotifyCollection(url) ? await spotifyCollectionInfo(url, creds) : await spotifyInfo(url);
+    } else if (isYouTubeCollection(url) || isSoundCloudCollection(url)) {
+      info = await ytdlpCollectionInfo(url);
     } else {
       const raw  = await ytDlp.execPromise([url, '--dump-json', '--no-playlist']);
       const data = JSON.parse(raw);
@@ -408,7 +539,7 @@ app.post('/api/info', async (req, res) => {
 app.post('/api/start-download', (req, res) => {
   const { url, tracks = [], spotifyCredentials: creds = {} } = req.body || {};
   if (!url || !isValidUrl(url)) return res.status(400).json({ error: 'Enter a valid URL.' });
-  if (!isSpotifyCollection(url))  return res.status(400).json({ error: 'Not a collection URL.' });
+  if (!isAnyCollection(url))    return res.status(400).json({ error: 'Not a collection URL.' });
 
   const jobId = crypto.randomBytes(12).toString('hex');
   const job = { events: [], clients: new Set(), done: false };
@@ -422,7 +553,10 @@ app.post('/api/start-download', (req, res) => {
 
   (async () => {
     try {
-      const result = await spotifyCollectionDownload(url, jobId, Array.isArray(tracks) ? tracks : [], emit);
+      const trackList = Array.isArray(tracks) ? tracks : [];
+      const result = isSpotifyCollection(url)
+        ? await spotifyCollectionDownload(url, jobId, trackList, emit)
+        : await ytdlpCollectionDownload(url, jobId, trackList, emit);
       emit('done', {
         status: 'ok', isPlaylist: true,
         filename: `${jobId}.zip`,
@@ -529,6 +663,15 @@ app.post('/api/trim', upload.single('file'), async (req, res) => {
   } catch (err) {
     try { fs.unlinkSync(inputPath); } catch {}
     res.status(500).json({ error: lastLines(err.message || String(err)) || 'Trim failed.' });
+  }
+});
+
+// GET /api/spotify-session
+app.get('/api/spotify-session', async (_req, res) => {
+  try {
+    res.json(await detectSpotifySession());
+  } catch {
+    res.json({ found: false, username: null, hasToken: false });
   }
 });
 

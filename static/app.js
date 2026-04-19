@@ -40,6 +40,7 @@ let selectedQuality = 'best';
 let lastSavedFolder = null;
 let videoTitle = '';
 let currentPlatform = null;
+let currentPlatformId = null;
 let isPlaylist = false;
 let playlistTrackCount = 0;
 let currentTracks = [];
@@ -144,7 +145,7 @@ document.getElementById('clearHistoryBtn').addEventListener('click', async () =>
 });
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-let appSettings = { saveLocation: 'downloads', spotifyClientId: '', spotifyClientSecret: '' };
+let appSettings = { saveLocation: 'downloads', spotifyClientId: '', spotifyClientSecret: '', spotifySource: 'youtube' };
 
 async function loadSettings() {
   if (IS_ELECTRON) {
@@ -155,6 +156,9 @@ async function loadSettings() {
   }
   document.querySelectorAll('input[name="saveLocation"]').forEach(r => {
     r.checked = r.value === appSettings.saveLocation;
+  });
+  document.querySelectorAll('input[name="spotifySource"]').forEach(r => {
+    r.checked = r.value === (appSettings.spotifySource || 'youtube');
   });
   $('spotifyClientId').value     = appSettings.spotifyClientId     || '';
   $('spotifyClientSecret').value = appSettings.spotifyClientSecret || '';
@@ -213,15 +217,41 @@ loadSettings().then(() => {
 
 refreshRecent();
 
+// Spotify session auto-detect
+async function checkSpotifySession() {
+  const el = $('spotifySessionStatus');
+  if (!el) return;
+  el.textContent = 'Checking…';
+  try {
+    const r = await fetch('/api/spotify-session');
+    const d = await r.json();
+    if (d.found) {
+      el.textContent = d.username ? `Found: ${d.username}` : 'Session found';
+      el.style.color = 'var(--accent, #1db954)';
+    } else {
+      el.textContent = 'Not found';
+      el.style.color = '';
+    }
+  } catch {
+    el.textContent = 'Could not check';
+    el.style.color = '';
+  }
+}
+
 // Settings button toggle
 settingsBtn.addEventListener('click', () => {
   qualityMenu.classList.add('hidden');
   historyMenu.classList.add('hidden');
   settingsMenu.classList.toggle('hidden');
+  if (!settingsMenu.classList.contains('hidden')) checkSpotifySession();
 });
 
 document.querySelectorAll('input[name="saveLocation"]').forEach(r => {
   r.addEventListener('change', () => saveSetting('saveLocation', r.value));
+});
+
+document.querySelectorAll('input[name="spotifySource"]').forEach(r => {
+  r.addEventListener('change', () => saveSetting('spotifySource', r.value));
 });
 
 ['spotifyClientId', 'spotifyClientSecret'].forEach(id => {
@@ -392,6 +422,8 @@ async function refreshRecent() {
 // ── Clipboard auto-detect ─────────────────────────────────────────────────────
 const PLATFORM_RE = [
   /youtube\.com\/watch/i, /youtu\.be\//i,
+  /youtube\.com\/playlist\?/i,
+  /music\.youtube\.com/i,
   /spotify\.com\/(track|album|playlist)/i,
   /soundcloud\.com\//i, /tiktok\.com\//i,
   /instagram\.com\/(p|reel|tv)\//i,
@@ -468,7 +500,8 @@ async function fetchInfo() {
     if (!res.ok) { showError(data.error || 'Could not fetch info.'); return; }
 
     videoTitle = data.title || 'download';
-    currentPlatform = data.platform ? data.platform.label : null;
+    currentPlatform   = data.platform ? data.platform.label : null;
+    currentPlatformId = data.platform ? data.platform.id   : null;
     isPlaylist = !!data.isPlaylist;
     playlistTrackCount = data.trackCount || 0;
 
@@ -490,12 +523,17 @@ async function fetchInfo() {
       qualityBtn.closest('.quality-anchor').style.display = 'none';
       hide(filenameInput);
 
-      $('videoTitle').textContent = data.title || (data.collectionType === 'album' ? 'Spotify Album' : 'Spotify Playlist');
+      $('videoTitle').textContent = data.title || (data.collectionType === 'album' ? 'Album' : 'Playlist');
       const up = $('uploaderName');
-      up.textContent = playlistTrackCount ? `${playlistTrackCount} tracks` : (data.collectionType || 'Playlist');
+      up.textContent = playlistTrackCount ? `${playlistTrackCount} tracks` : (data.uploader || data.collectionType || 'Playlist');
       show(up);
 
-      $('downloadBtnText').textContent = data.collectionType === 'album' ? 'Download Album' : 'Download Playlist';
+      const isSpotifyApp = currentPlatformId === 'spotify' && appSettings.spotifySource === 'app';
+      if (isSpotifyApp) {
+        $('downloadBtnText').textContent = data.collectionType === 'album' ? 'Open Album in Spotify' : 'Open Playlist in Spotify';
+      } else {
+        $('downloadBtnText').textContent = data.collectionType === 'album' ? 'Download Album' : 'Download Playlist';
+      }
 
       renderTrackList(currentTracks);
     } else {
@@ -504,7 +542,9 @@ async function fetchInfo() {
       show(thumbCol);
       formatToggle.style.display = '';
       qualityBtn.closest('.quality-anchor').style.display = '';
-      $('downloadBtnText').textContent = 'Download';
+
+      const isSingleSpotifyApp = currentPlatformId === 'spotify' && appSettings.spotifySource === 'app';
+      $('downloadBtnText').textContent = isSingleSpotifyApp ? 'Open in Spotify' : 'Download';
 
       // Filename input — pre-fill with sanitized title
       filenameInput.value = videoTitle.replace(/[^\w\s.\-()]/g, '').trim();
@@ -512,7 +552,7 @@ async function fetchInfo() {
 
       // Platform-specific format handling
       if (data.platform) {
-        const audioOnly = ['spotify', 'soundcloud'].includes(data.platform.id);
+        const audioOnly = ['spotify', 'soundcloud', 'youtubemusic'].includes(data.platform.id);
         formatToggle.querySelector('[data-fmt="video"]').style.display = audioOnly ? 'none' : '';
         setFormat(data.platform.defaultFormat || 'video');
         $('qualityMenuHeading').textContent = selectedFormat === 'audio' ? 'Audio quality' : 'Video quality';
@@ -551,6 +591,14 @@ async function startDownload() {
   const url = urlInput.value.trim();
   if (!url) return;
   closeAllModals();
+
+  // Spotify "open in app" mode — just open the URL, don't download
+  if (currentPlatformId === 'spotify' && appSettings.spotifySource === 'app') {
+    if (IS_ELECTRON) { await window.electronAPI.openExternal(url); }
+    else { window.open(url, '_blank', 'noopener'); }
+    return;
+  }
+
   hide(previewCard, recentSection);
 
   if (isPlaylist) {
@@ -1049,6 +1097,7 @@ resetBtn.addEventListener('click', () => {
   isPlaylist = false;
   playlistTrackCount = 0;
   currentTracks = [];
+  currentPlatformId = null;
   hide(trackListEl);
   show(thumbCol);
   formatToggle.style.display = '';

@@ -61,6 +61,10 @@ ipcMain.handle('open-folder', (_, folderPath) => {
   shell.openPath(folderPath);
 });
 
+ipcMain.handle('open-external', (_, url) => {
+  shell.openExternal(url);
+});
+
 // ── Clipboard ─────────────────────────────────────────────────────────────────
 ipcMain.handle('read-clipboard', () => clipboard.readText());
 

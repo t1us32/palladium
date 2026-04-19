@@ -411,6 +411,33 @@
             </span>
           </label>
         </div>
+        <div class="modal-divider"></div>
+        <div class="dropdown-section">
+          <p class="dropdown-heading">Spotify — download mode</p>
+          <label class="radio-row">
+            <input type="radio" name="spotifySource" value="youtube" checked />
+            <span class="radio-content">
+              <span class="radio-label">Download via YouTube</span>
+              <span class="radio-sub">Finds tracks on YouTube and saves as MP3</span>
+            </span>
+          </label>
+          <label class="radio-row">
+            <input type="radio" name="spotifySource" value="app" />
+            <span class="radio-content">
+              <span class="radio-label">Open in Spotify app</span>
+              <span class="radio-sub">Opens the track / album / playlist in the Spotify app</span>
+            </span>
+          </label>
+        </div>
+        <div class="modal-divider"></div>
+        <div class="dropdown-section">
+          <p class="dropdown-heading">Spotify session</p>
+          <div class="cred-row" style="align-items:center;">
+            <span class="cred-label">Status</span>
+            <span id="spotifySessionStatus" class="cred-hint" style="margin:0;font-size:12px;">—</span>
+          </div>
+          <p class="cred-hint">Auto-detected from your Spotify desktop app install.</p>
+        </div>
       </div>
     </div>
   </div>
